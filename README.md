@@ -25,7 +25,7 @@ Deploy this package directly to your team of developers using a clean Homebrew i
 
 ### 1. Installation
 ```bash
-brew tap your-github-username/tap
+brew tap k-cogswell/tap
 brew install jott
 
 ```
