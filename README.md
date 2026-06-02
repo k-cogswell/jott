@@ -41,7 +41,7 @@ brew install jott
 ### 2. Basic Usage Cadence
 
 ```bash
-jott "skyalyne-2080 - bruno review"   # Kicks off a new task tracking block
+jott "code review"   # Kicks off a new task tracking block
 jott status                           # Queries active runtime metrics
 jott break                            # Pauses tracking time metrics
 jott continue                         # Resumes last active workflow
@@ -92,7 +92,7 @@ To return to a specific task you tackled earlier in the day without re-typing or
 
 ```bash
 jott continue 1
-# Output: Recorded: skyalyne-2080 - bruno review
+# Output: Recorded: code review
 ```
 
 #### Render View Grid Layout Example
