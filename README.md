@@ -41,7 +41,7 @@ brew install jott
 ### 2. Basic Usage Cadence
 
 ```bash
-jott "code review"   # Kicks off a new task tracking block
+jott "code review"                    # Kicks off a new task tracking block
 jott status                           # Queries active runtime metrics
 jott break                            # Pauses tracking time metrics
 jott continue                         # Resumes last active workflow
