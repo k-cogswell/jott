@@ -10,7 +10,7 @@ def log_task(message, custom_dt=None):
     date_str = target_dt.strftime("%Y-%m-%d")
     time_str = target_dt.strftime("%H:%M:%S")
     file_path = get_file_path(date_str)
-    
+
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "a") as f:
         f.write(f"- {time_str} | {message}\n")
@@ -215,17 +215,18 @@ def sync_to_cloud():
         print(f"❌ An error occurred during sync: {e}")
 
 def show_help():
-    print(f"""
-{CLR_TITLE}======================================================================
-      _       _   _ 
-     (_) ___ | |_| |_ 
-     | |/ _ \| __| __|
-     | | (_) | |_| |_ 
-    _/ |\___/ \__|\__|
-   |__/
+    print(fr"""
+{CLR_TITLE}=====================================================
+                 _       _   _ 
+                (_) ___ | |_| |_ 
+                | |/ _ \| __| __|
+                | | (_) | |_| |_ 
+               _/ |\___/ \__|\__|
+              |__/
 
-  A Simple Terminal Time Tracker
-======================================================================{CLR_RESET}
+            A Simple Terminal Time Tracker
+ ===================================================={CLR_RESET}
+
 CONFIG FILE:
   {CLR_BOLD}{CONFIG_FILE}{CLR_RESET}
 ACTIVE LOG OUTPUT TARGET:
