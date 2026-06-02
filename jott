@@ -20,6 +20,9 @@ def main():
     
     if cmd in ["help", "-h", "--help"]:
         commands.show_help()
+    elif cmd == "edit":
+        target_date = resolve_date(sys.argv[2]) if len(sys.argv) > 2 else datetime.now().strftime("%Y-%m-%d")
+        commands.edit_ledger(target_date)
     elif cmd == "continue":
         target_id = sys.argv[2] if len(sys.argv) > 2 else None
         commands.continue_previous_task(target_id)

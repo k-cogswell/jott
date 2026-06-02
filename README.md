@@ -24,6 +24,7 @@ By compiling human-readable summary metrics directly into standard Markdown, you
 Deploy this package directly to your team of developers using a clean Homebrew installation flow.
 
 ### 1. Installation
+
 ```bash
 brew tap your-github-username/tap
 brew install jott
@@ -92,7 +93,7 @@ jott continue 1
 
 ```
 
-#### Render View Grid Layout Example:
+#### Render View Grid Layout Example
 
 ```text
 ## Time Summary for Monday, June 1st, 2026 (2026-06-01)
@@ -106,6 +107,18 @@ jott continue 1
 └── Total Logged Hours: 3h 15m
 
 ```
+
+### Manual Modifications (Edit)
+
+If you typo a ticket name, forget to record an entry, or need to tweak a specific timestamp, you can open a file directly in Neovim using the `edit` route.
+
+```bash
+jott edit              # Opens today's log in nvim
+jott edit yesterday    # Opens yesterday's log in nvim
+jott edit 2026-06-01   # Opens an explicit historical ledger
+```
+
+When editing, only manipulate the raw line entry items at the top of the file (e.g., - 10:35:27 | task string). When you type :wq to save and exit Neovim, jott will automatically intercept the exit signal, parse your newly modified entries, and re-compile your summary tables and total hours calculations cleanly in the background.
 
 ---
 

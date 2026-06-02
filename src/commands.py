@@ -19,6 +19,29 @@ def log_task(message, custom_dt=None):
     backdate_msg = f" (backdated to {date_str})" if custom_dt else ""
     print(f"Recorded: [{time_str}]{backdate_msg} {message}")
 
+def edit_ledger(target_date):
+    """Launches Neovim to edit the target file, then automatically recompiles tables on save."""
+    file_path = get_file_path(target_date)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
+    # Initialize basic schema header if file does not exist yet
+    if not os.path.exists(file_path):
+        with open(file_path, "w") as f:
+            f.write(f"# Time Log: {target_date}\n\n")
+
+    print(f"{CLR_TITLE}📝 Opening ledger for {target_date} in Neovim...{CLR_RESET}")
+    try:
+        # Launch Neovim inside interactive shell context block
+        subprocess.run(["nvim", file_path], check=True)
+        
+        # post-edit compilation catch
+        generate_and_save_report(target_date)
+        print(f"{CLR_CMD}✨ Save verified. Report table and hours compiled successfully for {target_date}.{CLR_RESET}")
+    except FileNotFoundError:
+        print(f"{CLR_TEXT}Error: 'nvim' binary executable was not found in your system path environment.{CLR_RESET}")
+    except Exception as e:
+        print(f"{CLR_TEXT}An error occurred executing your editor context: {e}{CLR_RESET}")
+
 def continue_previous_task(target_id=None):
     today_str = datetime.now().strftime("%Y-%m-%d")
     entries = parse_log(get_file_path(today_str))
@@ -171,10 +194,7 @@ def show_status():
     if last_entry["message"].lower() in ["stop", "break", "end"]:
         print(f"Status: On a break / Stopped (since {last_entry['time']})")
     else:
-        start_dt = datetime.strptime(last_entry["time"], "%H:%M:%S")
-        end_dt = datetime.strptime(datetime.now().strftime("%H:%M:%S"), "%H:%M:%S")
-        elapsed = format_duration(end_dt - start_dt)
-        print(f"Current Task: {last_entry['message']} (Running for {elapsed})")
+        print(f"Current Task: {last_entry['message']}")
 
 def sync_to_cloud():
     print(f"{CLR_TITLE}🔄 Syncing logs to Google Drive...{CLR_RESET}")
@@ -199,9 +219,9 @@ def show_help():
 {CLR_TITLE}======================================================================
   🕒 JOTT CLI — Simple Terminal Time Tracker
 ======================================================================{CLR_RESET}
-{CLR_HEAD}CONFIG FILE:{CLR_RESET}
+CONFIG FILE:
   {CLR_BOLD}{CONFIG_FILE}{CLR_RESET}
-{CLR_HEAD}ACTIVE LOG OUTPUT TARGET:{CLR_RESET}
+ACTIVE LOG OUTPUT TARGET:
   {CLR_BOLD}{LOG_BASE_DIR}{CLR_RESET}
 
 {CLR_HEAD}USAGE:{CLR_RESET}
@@ -212,6 +232,9 @@ def show_help():
   {CLR_CMD}backlog [mins] "[task]"{CLR_RESET}     Logs a task that started a given number of minutes ago.
   {CLR_CMD}continue{CLR_RESET}                    Resumes your immediate previous task prior to a break.
   {CLR_CMD}continue [id]{CLR_RESET}               Resumes a specific historical task via its row ID number.
+  {CLR_CMD}edit{CLR_RESET}                        Opens today's log in Neovim and compiles it on exit.
+  {CLR_CMD}edit yesterday{CLR_RESET}              Opens yesterday's log in Neovim.
+  {CLR_CMD}edit YYYY-MM-DD{CLR_RESET}             Opens any explicit targeted historical log in Neovim.
   {CLR_CMD}status{CLR_RESET}                      Displays active task & runtime.
   {CLR_CMD}view{CLR_RESET}                        Streams today's pre-calculated summary from disk.
   {CLR_CMD}view yesterday{CLR_RESET}              Streams yesterday's summary from disk.
