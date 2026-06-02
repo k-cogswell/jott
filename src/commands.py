@@ -217,7 +217,14 @@ def sync_to_cloud():
 def show_help():
     print(f"""
 {CLR_TITLE}======================================================================
-  🕒 JOTT CLI — Simple Terminal Time Tracker
+      _       _   _ 
+     (_) ___ | |_| |_ 
+     | |/ _ \| __| __|
+     | | (_) | |_| |_ 
+    _/ |\___/ \__|\__|
+   |__/
+
+  A Simple Terminal Time Tracker
 ======================================================================{CLR_RESET}
 CONFIG FILE:
   {CLR_BOLD}{CONFIG_FILE}{CLR_RESET}

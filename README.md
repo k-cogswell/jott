@@ -1,6 +1,13 @@
-# 🕒 jott
+<div align="center">
+  <img src="assets/logo.png" alt="Jott Logo" width="400" />
 
-A minimal, terminal-centric time tracker designed for developers who live in `vim` and `tmux`. It automatically compiles beautifully formatted, write-cached Markdown tables directly on input, features intelligent chronological sorting, and can sync data pipelines seamlessly up to Google Drive via `rclone`.
+  <br/>
+
+  **A minimal time tracker designed for developers who live in the terminal.**
+</div>
+
+<br/>
+ Jott automatically compiles beautifully formatted, write-cached Markdown tables directly on input, features intelligent chronological sorting, and can sync data pipelines seamlessly up to Google Drive via `rclone`.
 
 By compiling human-readable summary metrics directly into standard Markdown, your historical timeline ledgers double as self-contained, finalized text logs. Open them directly in GitHub, Obsidian, or Vim without fighting specialized formats or database corruptions.
 
@@ -17,18 +24,18 @@ By compiling human-readable summary metrics directly into standard Markdown, you
 - 📆 **Weekly Timesheet Aggregation:** Run `jott week` on Friday afternoons to view a high-level matrix mapping exact hour values per day for effortless entry into external corporate tools like OpenAir.
 - ⚙️ **XDG Standard Configuration:** Cleanly houses modular file target outputs through central TOML controls.
 
----
+<br>
 
+---
 ## 🚀 Quick Start & Installation (Private Tap)
 
-Deploy this package directly to your team of developers using a clean Homebrew installation flow.
+Deploy this package using a clean Homebrew installation flow.
 
 ### 1. Installation
 
 ```bash
-brew tap your-github-username/tap
+brew tap k-cogswell/tap
 brew install jott
-
 ```
 
 ### 2. Basic Usage Cadence
@@ -38,8 +45,7 @@ jott "skyalyne-2080 - bruno review"   # Kicks off a new task tracking block
 jott status                           # Queries active runtime metrics
 jott break                            # Pauses tracking time metrics
 jott continue                         # Resumes last active workflow
-jott week                             # Generates an OpenAir timesheet lookup grid
-
+jott week                             # Generates a timesheet lookup grid
 ```
 
 ---
@@ -57,7 +63,6 @@ If you prefer to direct your archives folder somewhere else (such as a shared se
 
 ```bash
 vim ~/.config/jott/config.toml
-
 ```
 
 Simply update the `log_dir` variable string to target your desired path. Tilde (`~`) home shorthand paths are fully supported:
@@ -67,7 +72,6 @@ Simply update the `log_dir` variable string to target your desired path. Tilde (
 # You can change where your markdown log archives are saved below:
 
 log_dir = "~/projects/my-time-vault/archives"
-
 ```
 
 ---
@@ -79,8 +83,7 @@ log_dir = "~/projects/my-time-vault/archives"
 If you get pulled away into an unscheduled meeting or hotfix and forget to punch it into your terminal, log it retroactively after the fact by specifying how many minutes ago the task started:
 
 ```bash
-jott backlog 30 "Emergency Sync with DevOps team"
-
+jott backlog 30 "Emergency Sync with team"
 ```
 
 ### Table ID Line Continuation
@@ -90,7 +93,6 @@ To return to a specific task you tackled earlier in the day without re-typing or
 ```bash
 jott continue 1
 # Output: Recorded: skyalyne-2080 - bruno review
-
 ```
 
 #### Render View Grid Layout Example
@@ -98,14 +100,13 @@ jott continue 1
 ```text
 ## Time Summary for Monday, June 1st, 2026 (2026-06-01)
 
-| ID | Start    | End                 | Duration | Task                                    |
-| -- | -------- | ------------------- | -------- | --------------------------------------- |
-| 1  | 09:00:00 | 10:00:00            | 1h 0m    | Refactoring the user auth database schema|
-| 2  | 10:00:00 | 10:30:00            | 30m      | break                                   |
-| 3  | 10:30:00 | 11:30:00            | 1h 0m    | Emergency Sync with DevOps team         |
-| 4  | 11:30:00 | 12:45:10 (current)  | 1h 15m   | Reviewing Pull Requests                 |
+| ID | Start    | End                 | Duration | Task               |
+| -- | -------- | ------------------- | -------- | ------------------ | 
+| 1  | 09:00:00 | 10:00:00            | 1h 0m    | Refactoring schema |
+| 2  | 10:00:00 | 10:30:00            | 30m      | break              |
+| 3  | 10:30:00 | 11:30:00            | 1h 0m    | Emergency meeting  |
+| 4  | 11:30:00 | 12:45:10 (current)  | 1h 15m   | Reviewing PRs      |
 └── Total Logged Hours: 3h 15m
-
 ```
 
 ### Manual Modifications (Edit)
@@ -129,11 +130,10 @@ When editing, only manipulate the raw line entry items at the top of the file (e
 The logs generate nested subfolders automatically using a year/month/day structure to keep your data vaults organized:
 
 ```text
-your-data-vault/
+~/.jott/
 └── 2026/
     └── 06/
         └── 2026-06-01.md
-
 ```
 
 ### Under the Hood: The Raw Markdown Layout
@@ -158,12 +158,11 @@ Date: Monday, June 1st, 2026
 | 4  | 11:30:00 | -        | -        | Reviewing Pull Requests                  |
 
 └── Total Logged Hours: 2h 0m
-
 ```
 
 ---
 
-## ☁️ Cloud Sync & rclone Setup
+## ☁️ Cloud Sync & rclone Setup (WIP)
 
 Back up your metrics vault cleanly to a private cloud instance like Google Drive using `rclone`. `jott` features a native `sync` command to run this backup pipeline.
 
@@ -171,7 +170,6 @@ Back up your metrics vault cleanly to a private cloud instance like Google Drive
 
 ```bash
 brew install rclone
-
 ```
 
 ### 2. Configure the Cloud Remote
@@ -180,7 +178,6 @@ Execute the interactive backend assistant:
 
 ```bash
 rclone config
-
 ```
 
 Follow the prompts exactly as outlined below:
@@ -201,12 +198,10 @@ Synchronize your logs manually at any time by executing:
 
 ```bash
 jott sync
-
 ```
 
 To run your backup automatically in the background at the end of every workday, open your local cron scheduler (`crontab -e`) and map an optimization instruction pointing to your target data vault folder:
 
 ```text
 0 18 * * 1-5 rclone sync /Users/username/.jott gdrive:JottBackupVault
-
 ```
