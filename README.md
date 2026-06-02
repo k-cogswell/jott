@@ -3,7 +3,7 @@
 
   <br/>
 
-  **A minimal, terminal-centric time tracker designed for developers who live in `vim` and `tmux`.**
+  **A minimal time tracker designed for developers who live in the terminal.**
 </div>
 
 <br/>
