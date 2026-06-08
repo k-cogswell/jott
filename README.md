@@ -27,6 +27,7 @@ By compiling human-readable summary metrics directly into standard Markdown, you
 <br>
 
 ---
+
 ## 🚀 Quick Start & Installation (Private Tap)
 
 Deploy this package using a clean Homebrew installation flow.
@@ -120,6 +121,19 @@ jott edit 2026-06-01   # Opens an explicit historical ledger
 ```
 
 When editing, only manipulate the raw line entry items at the top of the file (e.g., - 10:35:27 | task string). When you type :wq to save and exit Neovim, jott will automatically intercept the exit signal, parse your newly modified entries, and re-compile your summary tables and total hours calculations cleanly in the background.
+
+### Historical Weekly Lookbacks
+
+When logging into timesheet processing software like OpenAir on a Monday morning, you can query previous weeks' metrics directly using modifiers passed to the `week` command:
+
+```bash
+jott week             # Matrix for the CURRENT active week
+jott week last        # Matrix for the PREVIOUS week
+jott week 2           # Matrix for TWO weeks ago
+jott week 2026-05-18  # Matrix for the week containing that explicit date
+```
+
+This ensures you always have instant access to your historical hours, regardless of how delayed your timesheet entries are.
 
 ---
 

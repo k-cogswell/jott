@@ -1,5 +1,7 @@
 import os
+import sys
 import subprocess
+
 from datetime import datetime, timedelta
 from .config import LOG_BASE_DIR, CONFIG_FILE, CLR_TITLE, CLR_HEAD, CLR_CMD, CLR_TEXT, CLR_RESET, CLR_BOLD
 from .helpers import format_duration, get_ordinal_date
@@ -10,7 +12,7 @@ def log_task(message, custom_dt=None):
     date_str = target_dt.strftime("%Y-%m-%d")
     time_str = target_dt.strftime("%H:%M:%S")
     file_path = get_file_path(date_str)
-
+    
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "a") as f:
         f.write(f"- {time_str} | {message}\n")
@@ -20,21 +22,16 @@ def log_task(message, custom_dt=None):
     print(f"Recorded: [{time_str}]{backdate_msg} {message}")
 
 def edit_ledger(target_date):
-    """Launches Neovim to edit the target file, then automatically recompiles tables on save."""
     file_path = get_file_path(target_date)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     
-    # Initialize basic schema header if file does not exist yet
     if not os.path.exists(file_path):
         with open(file_path, "w") as f:
             f.write(f"# Time Log: {target_date}\n\n")
 
     print(f"{CLR_TITLE}📝 Opening ledger for {target_date} in Neovim...{CLR_RESET}")
     try:
-        # Launch Neovim inside interactive shell context block
         subprocess.run(["nvim", file_path], check=True)
-        
-        # post-edit compilation catch
         generate_and_save_report(target_date)
         print(f"{CLR_CMD}✨ Save verified. Report table and hours compiled successfully for {target_date}.{CLR_RESET}")
     except FileNotFoundError:
@@ -132,16 +129,31 @@ def show_summary(target_date):
     total_str = format_duration(total_work_duration) if total_work_duration.total_seconds() > 0 else "0m"
     print(f"{CLR_TEXT}└──{CLR_RESET} {CLR_HEAD}Total Logged Hours:{CLR_RESET} {CLR_CMD}{total_str}{CLR_RESET}\n")
 
-def show_weekly_summary():
+def show_weekly_summary(week_modifier=None):
+    """Compiles and renders an aggregated weekly timesheet view, supporting historical lookbacks."""
     today = datetime.now()
-    monday = today - timedelta(days=today.weekday())
+    base_monday = today - timedelta(days=today.weekday())
+    
+    # Process historical lookback evaluation arguments
+    if week_modifier:
+        if week_modifier.lower() == "last":
+            base_monday -= timedelta(weeks=1)
+        elif week_modifier.isdigit():
+            base_monday -= timedelta(weeks=int(week_modifier))
+        else:
+            try:
+                target_dt = datetime.strptime(week_modifier, "%Y-%m-%d")
+                base_monday = target_dt - timedelta(days=target_dt.weekday())
+            except ValueError:
+                print(f"{CLR_TEXT}Error: Invalid week modifier '{week_modifier}'. Use 'last', a number (e.g., '2'), or a date 'YYYY-MM-DD'.{CLR_RESET}")
+                return
     
     weekly_grid = []
     weekly_breakdowns = {}
     grand_total_duration = timedelta(0)
     
     for i in range(7):
-        day_dt = monday + timedelta(days=i)
+        day_dt = base_monday + timedelta(days=i)
         day_str = day_dt.strftime("%Y-%m-%d")
         day_name = day_dt.strftime("%A")
         
@@ -156,7 +168,7 @@ def show_weekly_summary():
         else:
             weekly_grid.append([day_name, day_str, "-"])
 
-    print(f"\n{CLR_TITLE}🗓️  Weekly Timesheet Matrix (Week of {monday.strftime('%Y-%m-%d')}){CLR_RESET}\n")
+    print(f"\n{CLR_TITLE}🗓️  Weekly Timesheet Matrix (Week of {base_monday.strftime('%Y-%m-%d')}){CLR_RESET}\n")
     headers = ["Day", "Date", "Total Hours"]
     widths = [10, 12, 12]
     
@@ -194,7 +206,10 @@ def show_status():
     if last_entry["message"].lower() in ["stop", "break", "end"]:
         print(f"Status: On a break / Stopped (since {last_entry['time']})")
     else:
-        print(f"Current Task: {last_entry['message']}")
+        start_dt = datetime.strptime(last_entry["time"], "%H:%M:%S")
+        end_dt = datetime.strptime(datetime.now().strftime("%H:%M:%S"), "%H:%M:%S")
+        elapsed = format_duration(end_dt - start_dt)
+        print(f"Current Task: {last_entry['message']} (Running for {elapsed})")
 
 def sync_to_cloud():
     print(f"{CLR_TITLE}🔄 Syncing logs to Google Drive...{CLR_RESET}")
@@ -215,18 +230,17 @@ def sync_to_cloud():
         print(f"❌ An error occurred during sync: {e}")
 
 def show_help():
-    print(fr"""
-{CLR_TITLE}=====================================================
-                 _       _   _ 
-                (_) ___ | |_| |_ 
-                | |/ _ \| __| __|
-                | | (_) | |_| |_ 
-               _/ |\___/ \__|\__|
-              |__/
+    # 'fr' macro string completely avoids any escape character compliance issues
+    print(fr"""{CLR_TITLE}    _            _   _   
+   (_)  ___     | |_| |_ 
+   | | / _ \ _  | __| __|
+   | || (_) (_) | |_| |_ 
+  _/ | \___/    \__|\__| 
+ |__/                   
 
-            A Simple Terminal Time Tracker
- ===================================================={CLR_RESET}
-
+======================================================================
+  🕒 JOTT CLI — Simple Terminal Time Tracker
+======================================================================{CLR_RESET}
 CONFIG FILE:
   {CLR_BOLD}{CONFIG_FILE}{CLR_RESET}
 ACTIVE LOG OUTPUT TARGET:
@@ -246,8 +260,11 @@ ACTIVE LOG OUTPUT TARGET:
   {CLR_CMD}status{CLR_RESET}                      Displays active task & runtime.
   {CLR_CMD}view{CLR_RESET}                        Streams today's pre-calculated summary from disk.
   {CLR_CMD}view yesterday{CLR_RESET}              Streams yesterday's summary from disk.
-  {CLR_CMD}view week{CLR_RESET}                   Renders the 7-day high-level timesheet grid.
-  {CLR_CMD}week{CLR_RESET}                        Shorthand wrapper for 'view week'.
+  {CLR_CMD}view week{CLR_RESET}                   Renders the current week's timesheet matrix grid.
+  {CLR_CMD}view week last{CLR_RESET}              Renders the previous week's timesheet matrix grid.
+  {CLR_CMD}view week [num]{CLR_RESET}              Renders the matrix grid from [num] weeks ago.
+  {CLR_CMD}view week [date]{CLR_RESET}             Renders the matrix grid for the week containing [date].
+  {CLR_CMD}week [modifier]{CLR_RESET}              Shorthand wrapper for 'view week [modifier]'.
   {CLR_CMD}sync{CLR_RESET}                        Backs up archive directory structure via rclone.
   {CLR_CMD}help{CLR_RESET}                        Presents this guide.
 
