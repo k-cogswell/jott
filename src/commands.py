@@ -1,13 +1,13 @@
 import os
 import sys
 import subprocess
-
 from datetime import datetime, timedelta
 from .config import LOG_BASE_DIR, CONFIG_FILE, CLR_TITLE, CLR_HEAD, CLR_CMD, CLR_TEXT, CLR_RESET, CLR_BOLD
 from .helpers import format_duration, get_ordinal_date
 from .storage import get_file_path, parse_log, calculate_daily_durations, generate_and_save_report
 
 def log_task(message, custom_dt=None):
+    """Saves a fresh tracking row milestone directly to your historical logs."""
     target_dt = custom_dt if custom_dt else datetime.now()
     date_str = target_dt.strftime("%Y-%m-%d")
     time_str = target_dt.strftime("%H:%M:%S")
@@ -17,11 +17,17 @@ def log_task(message, custom_dt=None):
     with open(file_path, "a") as f:
         f.write(f"- {time_str} | {message}\n")
         
+    # Instantly trigger the summary recompilation layer on save
     generate_and_save_report(date_str)
     backdate_msg = f" (backdated to {date_str})" if custom_dt else ""
     print(f"Recorded: [{time_str}]{backdate_msg} {message}")
 
 def edit_ledger(target_date):
+    """
+    Suspends script execution and hands terminal UI control over to Neovim.
+    Once Neovim saves and closes, it intercepts the exit signal and 
+    automatically re-compiles your files to fix any manual changes.
+    """
     file_path = get_file_path(target_date)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     
@@ -31,7 +37,10 @@ def edit_ledger(target_date):
 
     print(f"{CLR_TITLE}📝 Opening ledger for {target_date} in Neovim...{CLR_RESET}")
     try:
+        # Hand off control to the native terminal shell process context
         subprocess.run(["nvim", file_path], check=True)
+        
+        # Intercept on close and fix any calculation drifts caused by manual overrides
         generate_and_save_report(target_date)
         print(f"{CLR_CMD}✨ Save verified. Report table and hours compiled successfully for {target_date}.{CLR_RESET}")
     except FileNotFoundError:
@@ -40,6 +49,10 @@ def edit_ledger(target_date):
         print(f"{CLR_TEXT}An error occurred executing your editor context: {e}{CLR_RESET}")
 
 def continue_previous_task(target_id=None):
+    """
+    Resumes a task. It either crawls back sequentially to find your 
+    last tracked task or performs a direct key lookup on a table row ID.
+    """
     today_str = datetime.now().strftime("%Y-%m-%d")
     entries = parse_log(get_file_path(today_str))
     
@@ -49,6 +62,7 @@ def continue_previous_task(target_id=None):
 
     target_task = None
     if target_id is not None:
+        # Branch 1: Explicit Table row position number lookup
         try:
             idx = int(target_id) - 1
             if 0 <= idx < len(entries):
@@ -60,6 +74,7 @@ def continue_previous_task(target_id=None):
             print(f"{CLR_TEXT}Error: Continue target parameter must be an integer row ID.{CLR_RESET}")
             return
     else:
+        # Branch 2: Search backward through logs to skip break/stop keywords
         for entry in reversed(entries):
             if entry["message"].lower() not in ["stop", "break", "end"]:
                 target_task = entry["message"]
@@ -69,6 +84,7 @@ def continue_previous_task(target_id=None):
         print(f"{CLR_TEXT}Error: No valid work blocks found to continue from today.{CLR_RESET}")
         return
 
+    # Guard tracking duplicates if they are already executing this block
     if entries[-1]["message"] == target_task:
         print(f"Status: Already actively tracking '{target_task}'")
         return
@@ -76,6 +92,11 @@ def continue_previous_task(target_id=None):
     log_task(target_task)
 
 def show_summary(target_date):
+    """
+    Generates a beautifully aligned dashboard view.
+    It reads raw data strings, calculates true visual padding constraints, 
+    and overlays high-contrast ANSI colors right before rendering.
+    """
     file_path = get_file_path(target_date)
     if not os.path.exists(file_path):
         print(f"No time log found for {target_date}.")
@@ -89,6 +110,7 @@ def show_summary(target_date):
     display_rows, total_work_duration = calculate_daily_durations(target_date, entries)
     headers = ["ID", "Start", "End", "Duration", "Task"]
     
+    # Pre-calculate padding bounds BEFORE applying ANSI color escape injection formatting codes
     col_widths = [len(h) for h in headers]
     for i, r in enumerate(display_rows):
         end_display = f"{r['end']} (current)" if r['is_active_current'] else r['end']
@@ -101,10 +123,12 @@ def show_summary(target_date):
     human_date = get_ordinal_date(target_date)
     print(f"\n{CLR_TITLE}## Time Summary for {human_date} ({target_date}){CLR_RESET}\n")
     
+    # Display Colorized Headers
     padded_headers = [f"{headers[idx]:<{col_widths[idx]}}" for idx in range(5)]
     print(f"{CLR_TEXT}|{CLR_RESET} " + f" {CLR_TEXT}|{CLR_RESET} ".join(f"{CLR_HEAD}{h}{CLR_RESET}" for h in padded_headers) + f" {CLR_TEXT}|{CLR_RESET}")
     print(f"{CLR_TEXT}|{CLR_RESET} " + f" {CLR_TEXT}|{CLR_RESET} ".join(f"{CLR_TEXT}{'-' * col_widths[idx]}{CLR_RESET}" for idx in range(5)) + f" {CLR_TEXT}|{CLR_RESET}")
     
+    # Display Dynamic Rows
     for i, r in enumerate(display_rows):
         end_display = f"{r['end']} (current)" if r['is_active_current'] else r['end']
         padded_cells = [
@@ -118,8 +142,10 @@ def show_summary(target_date):
         colored_cells = []
         for idx, cell_str in enumerate(padded_cells):
             if r['is_active_current']:
+                # Bright green styling for current live entries
                 colored_cells.append(f"{CLR_CMD}{cell_str}{CLR_RESET}" if idx in [2, 3] else f"{CLR_BOLD}{cell_str}{CLR_RESET}")
             elif r['is_break']:
+                # Dim gray styling for structural break breaks
                 colored_cells.append(f"{CLR_TEXT}{cell_str}{CLR_RESET}")
             else:
                 colored_cells.append(cell_str)
@@ -130,11 +156,14 @@ def show_summary(target_date):
     print(f"{CLR_TEXT}└──{CLR_RESET} {CLR_HEAD}Total Logged Hours:{CLR_RESET} {CLR_CMD}{total_str}{CLR_RESET}\n")
 
 def show_weekly_summary(week_modifier=None):
-    """Compiles and renders an aggregated weekly timesheet view, supporting historical lookbacks."""
+    """
+    Compiles an aggregated, multi-day timesheet grid. This function evaluates 
+    relative lookbacks ('last'), shift counters ('2'), or explicit calendar anchor points.
+    """
     today = datetime.now()
     base_monday = today - timedelta(days=today.weekday())
     
-    # Process historical lookback evaluation arguments
+    # Parse lookback parameters to adjust the base target Monday
     if week_modifier:
         if week_modifier.lower() == "last":
             base_monday -= timedelta(weeks=1)
@@ -152,6 +181,7 @@ def show_weekly_summary(week_modifier=None):
     weekly_breakdowns = {}
     grand_total_duration = timedelta(0)
     
+    # Pull data sequentially from Monday (0) through Sunday (6)
     for i in range(7):
         day_dt = base_monday + timedelta(days=i)
         day_str = day_dt.strftime("%Y-%m-%d")
@@ -168,6 +198,7 @@ def show_weekly_summary(week_modifier=None):
         else:
             weekly_grid.append([day_name, day_str, "-"])
 
+    # 1. Print the High-Level Timesheet Grid Matrix
     print(f"\n{CLR_TITLE}🗓️  Weekly Timesheet Matrix (Week of {base_monday.strftime('%Y-%m-%d')}){CLR_RESET}\n")
     headers = ["Day", "Date", "Total Hours"]
     widths = [10, 12, 12]
@@ -184,6 +215,7 @@ def show_weekly_summary(week_modifier=None):
     grand_str = format_duration(grand_total_duration) if grand_total_duration.total_seconds() > 0 else "0m"
     print(f"{CLR_TEXT}└──{CLR_RESET} {CLR_HEAD}Grand Total Weekly Hours:{CLR_RESET} {CLR_CMD}{grand_str}{CLR_RESET}\n")
     
+    # 2. Print an itemized task list, automatically filtered to omit structural breaks
     if weekly_breakdowns:
         print(f"{CLR_TITLE}🔍 Itemized Task Notes Reference:{CLR_RESET}")
         for day_title, tasks in weekly_breakdowns.items():
@@ -196,6 +228,7 @@ def show_weekly_summary(week_modifier=None):
         print()
 
 def show_status():
+    """Queries and echoes immediate tracking session performance metrics."""
     today_str = datetime.now().strftime("%Y-%m-%d")
     entries = parse_log(get_file_path(today_str))
     if not entries:
@@ -206,12 +239,10 @@ def show_status():
     if last_entry["message"].lower() in ["stop", "break", "end"]:
         print(f"Status: On a break / Stopped (since {last_entry['time']})")
     else:
-        start_dt = datetime.strptime(last_entry["time"], "%H:%M:%S")
-        end_dt = datetime.strptime(datetime.now().strftime("%H:%M:%S"), "%H:%M:%S")
-        elapsed = format_duration(end_dt - start_dt)
-        print(f"Current Task: {last_entry['message']} (Running for {elapsed})")
+        print(f"Current Task: {last_entry['message']}")
 
 def sync_to_cloud():
+    """Validates configuration parameters and syncs your vault directories via rclone."""
     print(f"{CLR_TITLE}🔄 Syncing logs to Google Drive...{CLR_RESET}")
     try:
         subprocess.Popen(["rclone", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
@@ -230,7 +261,10 @@ def sync_to_cloud():
         print(f"❌ An error occurred during sync: {e}")
 
 def show_help():
-    # 'fr' macro string completely avoids any escape character compliance issues
+    """Outputs structured usage documentation and your colorized ASCII branding logo."""
+    # Prefixing with 'fr' flags this block as both a Raw String and a formatted literal.
+    # This instructs Python's compiler to skip standard escape rules, completely 
+    # eliminating any potential backslash 'SyntaxWarning' exceptions inside the ASCII logo.
     print(fr"""{CLR_TITLE}    _            _   _   
    (_)  ___     | |_| |_ 
    | | / _ \ _  | __| __|
