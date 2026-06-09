@@ -11,211 +11,245 @@
 
 By compiling human-readable summary metrics directly into standard Markdown, your historical timeline ledgers double as self-contained, finalized text logs. Open them directly in GitHub, Obsidian, or Vim without fighting specialized formats or database corruptions.
 
----
-
 ## ✨ Features
 
-- ⌨️ **Keyboard Native:** Log your tasks instantly without leaving your shell.
-- ⚡ **Write-Cached Architecture:** Pre-computes and bakes summary ledger tables straight to the Markdown file when a task triggers.
-- 🎨 **Smart Terminal Presentation:** Strips and overlays high-contrast ANSI themes on the fly when viewing files through the CLI, keeping disk text completely clean.
-- ⏱️ **Live Status Tracking:** Displays active running metrics and live session tracking on query.
-- ⏳ **Retroactive Logging (Backlog):** Forgot to log a meeting? Insert a task that kicked off a given number of minutes ago. The engine resolves chronologies automatically.
-- 🔄 **Smart Resumption (Continue):** Continue your last task raw, or supply a historical table integer ID (`jott continue 2`) to clone any historical entry forward instantly.
-- 📆 **Weekly Timesheet Aggregation:** Run `jott week` on Friday afternoons to view a high-level matrix mapping exact hour values per day for effortless entry into external corporate tools like OpenAir.
-- ⚙️ **XDG Standard Configuration:** Cleanly houses modular file target outputs through central TOML controls.
-
-<br>
+* ⌨️ **Keyboard Native:** Log tasks instantly without leaving your active project shell buffer.
+* ⚡ **Write-Cached Engine:** Pre-computes and bakes optimized summary ledger tables into Markdown automatically on input.
+* 🎨 **Dynamic Presenter:** Applies high-contrast ANSI colors on-the-fly inside the terminal while keeping on-disk Markdown completely clean.
+* ⏳ **Retroactive Correction:** Insert tasks that started a given number of minutes ago. Chronologies are resolved and re-sorted instantly.
+* 🔄 **Smart Resumption:** Clone previous tasks forward by passing its raw line position integer ID number.
+* 📆 **Timesheet Aggregator:** Instantly maps accurate, breakout-free hour values per day for fast transcription into external corporate tools like OpenAir.
+* ⚙️ **XDG Standard Compliance:** Isolate your configuration files and target file directories using standardized TOML layout schemes.
 
 ---
 
-## 🚀 Quick Start & Installation (Private Tap)
+## 🚀 Installation & Homebrew Setup
 
-Deploy this package using a clean Homebrew installation flow.
-
-### 1. Installation
+Deploy `jott` natively to your development machine using your custom Homebrew tap:
 
 ```bash
-brew tap k-cogswell/tap
+# 1. Tap your private or public team repository space
+brew tap your-github-username/tap
+
+# 2. Install the binary globally
 brew install jott
-```
 
-### 2. Basic Usage Cadence
-
-```bash
-jott "code review" # Kicks off a new task tracking block
-jott status        # Queries active runtime metrics
-jott break         # Pauses tracking time metrics
-jott continue      # Resumes last active workflow
-jott week          # Generates a timesheet lookup grid
 ```
 
 ---
 
 ## ⚙️ Configuration
 
-`jott` complies with the modern XDG Base Directory Specification. The first time you execute the script, it automatically generates a zero-dependency configuration file at:
+`jott` complies with the modern XDG Base Directory Specification. The first time you execute a command, it automatically generates a baseline configuration file at:
 `~/.config/jott/config.toml`
 
-By default, it initializes your workspace to funnel all timeline text vault logs into a global home directory folder (`~/.jott`).
+By default, it routes your daily database text files into a global home vault directory located at `~/.jott`.
 
-### Customizing the Log Directory
+### Modifying the Active Log Path
 
-If you prefer to direct your archives folder somewhere else (such as a shared server directory or an explicit local folder inside your Git workspace profile), open the configuration file:
+If you prefer to direct your daily files inside an active shared company server drive or a dedicated workspace folder inside your active Git repository, modify your file:
 
 ```bash
-vim ~/.config/jott/config.toml
+nvim ~/.config/jott/config.toml
 ```
 
-Simply update the `log_dir` variable string to target your desired path. Tilde (`~`) home shorthand paths are fully supported:
+Simply update the `log_dir` target path variable string. Tilde (`~`) user expansions are fully supported:
 
 ```toml
 # 🕒 Jott CLI Configuration File
 # You can change where your markdown log archives are saved below:
-
 log_dir = "~/projects/my-time-vault/archives"
 ```
 
+Verify your resolved setup at any time by executing `jott help`. It will echo your exact active operational files right at the top of the context summary display.
+
 ---
 
-## 💡 Detailed Usage Guide
+## 🗺️ Detailed Usage Guide: A Day in the Life
 
-### Retroactive Logging (The "I Forgot" Feature)
+To get comfortable with the complete `jott` command suite, let's walk through how a typical developer uses it step-by-step from morning check-in to end-of-week timesheet submission.
 
-If you get pulled away into an unscheduled meeting or hotfix and forget to punch it into your terminal, log it retroactively after the fact by specifying how many minutes ago the task started:
+### 🌅 09:00 AM — Punching In
 
-```bash
-jott backlog 30 "Emergency Sync with team"
-```
-
-### Table ID Line Continuation
-
-To return to a specific task you tackled earlier in the day without re-typing or copy-pasting its string contents, query your ledger table via `jott view`, identify its integer row position ID, and reference it:
+You sit down at your keyboard and kick off your day with your first engineering meeting. To start tracking time, call `jott` followed by your message:
 
 ```bash
-jott continue 1
-# Output: Recorded: code review
+jott "Sprint Planning & Team Standup"
+# Output: Recorded: Sprint Planning & Team Standup
 ```
 
-#### Render View Grid Layout Example
+Behind the scenes, `jott` creates today's calendar Markdown ledger and opens a line item recording that your task began exactly at `09:00:00`.
+
+### 🔍 09:45 AM — Checking Active Status
+
+You want to verify what task you are currently billing time to and see how long you've been working on it without rendering a giant text grid. Run the tool raw (or pass the explicit `status` modifier):
+
+```bash
+jott
+# Output: Current Task: Sprint Planning & Team Standup (Running for 45m)
+```
+
+### ⚙️ 10:00 AM — Shifting Gears
+
+Standup ends, and it's time to dive into technical focus blocks. You log your next project milestone:
+
+```bash
+jott "pr review"
+# Output: Recorded: pr review
+```
+
+> **How Jott's Engine Works:** You never have to manually clock out of a task. The moment you input a new task description, `jott` intercepts the command, marks `10:00:00` as the completion time for your standup meeting, calculates that the meeting took exactly `1h 0m`, and initializes your new engineering clock.
+
+### ☕ 12:00 PM — Stepping Away
+
+It's lunchtime, and you want to freeze your project tracking metrics so you don't accidentally bill time to a client or internal ticket. Pass any structural tracking pause keyword (`break`, `stop`, or `end`):
+
+```bash
+jott break
+# Output: Recorded: break
+```
+
+The calculation algorithm marks the completion of your review task and stops the active tracking timer.
+
+### 🪵 01:30 PM — The Retroactive "Oops"
+
+You sit back down at `01:30 PM` after lunch, but realize you were pulled into an urgent production infrastructure emergency at `01:00 PM` and forgot to log it.
+
+Instead of opening your raw ledger file to fix the timestamps manually, handle it directly from your terminal using the `backlog` command followed by the number of minutes ago the task *actually* started:
+
+```bash
+jott backlog 30 "DevOps infrastructure hotfix"
+# Output: Recorded: (backdated to 2026-06-09) DevOps infrastructure hotfix
+```
+
+`jott` calculates the relative backward time offset (`13:30 minus 30 minutes = 13:00`), inserts the hotfix cleanly at `13:00:00`, and marks your lunch break as a crisp 60-minute interval.
+
+### 🔄 02:00 PM — Re-engaging Earlier Focus Blocks
+
+The hotfix is wrapped up, and you want to jump back into code review from this morning. Instead of re-typing or copy-pasting that long task description string, print today's dashboard layout:
+
+```bash
+jott view
+```
 
 ```text
-## Time Summary for Monday, June 1st, 2026 (2026-06-01)
+## Time Summary for Tuesday, June 9th, 2026 (2026-06-09)
 
-| ID | Start    | End                 | Duration | Task               |
-| -- | -------- | ------------------- | -------- | ------------------ | 
-| 1  | 09:00:00 | 10:00:00            | 1h 0m    | Refactoring schema |
-| 2  | 10:00:00 | 10:30:00            | 30m      | break              |
-| 3  | 10:30:00 | 11:30:00            | 1h 0m    | Emergency meeting  |
-| 4  | 11:30:00 | 12:45:10 (current)  | 1h 15m   | Reviewing PRs      |
-└── Total Logged Hours: 3h 15m
+| ID | Start    | End                 | Duration | Task                                    |
+| -- | -------- | ------------------- | -------- | --------------------------------------- |
+| 1  | 09:00:00 | 10:00:00            | 1h 0m    | Sprint Planning & Team Standup          |
+| 2  | 10:00:00 | 12:00:00            | 2h 0m    | pr review                               |
+| 3  | 12:00:00 | 13:00:00            | 1h 0m    | break                                   |
+| 4  | 13:00:00 | 14:00:00            | 1h 0m    | DevOps infrastructure hotfix            |
+└── Total Logged Hours: 4h 0m
 ```
 
-### Manual Modifications (Edit)
-
-If you typo a ticket name, forget to record an entry, or need to tweak a specific timestamp, you can open a file directly in Neovim using the `edit` route.
+You see that the review block is sitting right at row **`ID 2`**. Clone it forward instantly using the row index identifier:
 
 ```bash
-jott edit              # Opens today's log in nvim
-jott edit yesterday    # Opens yesterday's log in nvim
-jott edit 2026-06-01   # Opens an explicit historical ledger
+jott continue 2
+# Output: Recorded: pr review
 ```
 
-When editing, only manipulate the raw line entry items at the top of the file (e.g., - 10:35:27 | task string). When you type :wq to save and exit Neovim, jott will automatically intercept the exit signal, parse your newly modified entries, and re-compile your summary tables and total hours calculations cleanly in the background.
+*(Pro-Tip: If you take a brief 5-minute break and just want to resume the absolute last thing you were working on, simply run `jott continue` without an ID number).*
 
-### Historical Weekly Lookbacks
+### 📝 04:30 PM — Correcting Mistakes (Manual Intervention)
 
-When logging into timesheet processing software like OpenAir on a Monday morning, you can query previous weeks' metrics directly using modifiers passed to the `week` command:
+You realize that row `ID 4` shouldn't have been logged as "infrastructure hotfix"—it was actually an "architecture sync meeting." You want to fix the raw data directly. Execute the `edit` command:
 
 ```bash
-jott week             # Matrix for the CURRENT active week
-jott week last        # Matrix for the PREVIOUS week
-jott week 2           # Matrix for TWO weeks ago
-jott week 2026-05-18  # Matrix for the week containing that explicit date
+jott edit
 ```
 
-This ensures you always have instant access to your historical hours, regardless of how delayed your timesheet entries are.
+This suspends your active shell environment and launches Neovim directly into today's log file. You modify line 4:
+
+```text
+# Before
+- 13:00:00 | DevOps infrastructure hotfix
+
+# After
+- 13:00:00 | DevOps architecture sync
+```
+
+Type `:wq` to save and close out of Neovim.
+
+> **Automatic Cache Recalculation:** The moment Neovim closes, `jott` catches the file change handle, completely parses your raw lines, re-sequences the chronologies, and completely regenerates the output report summary table and hours tallies perfectly in the background.
+
+### 📊 05:00 PM — Friday Afternoon OpenAir Entry
+
+It's the end of the week, and you need to submit your time metrics into your company's official management software (OpenAir). Instead of running `jott view` five individual times and clicking through calendar panels, load your high-level weekly matrix:
+
+```bash
+jott week
+```
+
+```text
+🗓️  Weekly Timesheet Matrix (Week of 2026-06-08)
+
+| Day        | Date         | Total Hours  |
+| ---------- | ------------ | ------------ |
+| Monday     | 2026-06-08   | 8h 15m       |
+| Tuesday    | 2026-06-09   | 7h 45m       |
+| Wednesday  | 2026-06-10   | 8h 0m        |
+| Thursday   | 2026-06-11   | 8h 30m       |
+| Friday     | 2026-06-12   | 4h 15m       |
+| Saturday   | 2026-06-13   | -            |
+| Sunday     | 2026-06-14   | -            |
+└── Grand Total Weekly Hours: 37h 45m
+
+🔍 Itemized Task Notes Reference:
+
+### Tuesday (2026-06-09)
+  • [09:00:00 - 10:00:00] (1h 0m) → Sprint Planning & Team Standup
+  • [10:00:00 - 12:00:00] (2h 0m) → pr review
+  • [13:00:00 - 14:00:00] (1h 0m) → DevOps architecture sync
+  • [14:00:00 - 17:15:00] (3h 15m) → pr review
+```
+
+You copy the daily totals directly into your timesheet cells. The *Itemized Task Notes* section automatically strips out your breaks and lunch periods, leaving a pristine list of descriptions ready to paste into your billing logs.
+
+#### What if I forgot to enter my time and it's now next week?
+
+No problem. You can pass lookback modifiers to dive backwards through historical weekly blocks:
+
+```bash
+jott week last        # Pulls up the entire matrix for last week
+jott week 2           # Pulls up the matrix for two weeks ago
+jott week 2026-05-18  # Pulls up the week containing that specific date
+
+```
+
+### ☁️ 05:15 PM — Offsite Backup
+
+Your timesheet is approved, and your week is wrapped up. Run the native cloud connector to safely sync your text data logs directory up to your secure Google Drive storage layout via `rclone`:
+
+```bash
+jott sync
+# Output: ✨ Backup successful! Your logs are secure in the cloud.
+```
 
 ---
 
-## 📁 Storage & Markdown Structure
+## 📁 Storage Layout Vault Overview
 
-### Repository Tree Structure
-
-The logs generate nested subfolders automatically using a year/month/day structure to keep your data vaults organized:
+Your data directory generates organized path branches using a simple nested execution tree format:
 
 ```text
 ~/.jott/
 └── 2026/
     └── 06/
-        └── 2026-06-01.md
+        └── 2026-06-09.md    <- Pristine, raw human-readable log file
 ```
 
-### Under the Hood: The Raw Markdown Layout
+### Public GitHub Repositories Safeguard (Pro-Tip)
 
-Because the script bakes the report summaries as pure text on disk, running a direct file query like `cat ~/.jott/2026/06/2026-06-01.md` reveals a completely clean format entirely free of hidden ANSI escape noise:
-
-```markdown
-# Time Log: 2026-06-01
-- 09:00:00 | Refactoring the user auth database schema
-- 10:00:00 | break
-- 10:30:00 | Emergency Sync with DevOps team
-- 11:30:00 | Reviewing Pull Requests
-
-## Summary Report
-Date: Monday, June 1st, 2026
-
-| ID | Start    | End      | Duration | Task                                     |
-| -- | -------- | -------- | -------- | ---------------------------------------- |
-| 1  | 09:00:00 | 10:00:00 | 1h 0m    | Refactoring the user auth database schema|
-| 2  | 10:00:00 | 10:30:00 | 30m      | break                                    |
-| 3  | 10:30:00 | 11:30:00 | 1h 0m    | Emergency Sync with DevOps team          |
-| 4  | 11:30:00 | -        | -        | Reviewing Pull Requests                  |
-
-└── Total Logged Hours: 2h 0m
-```
-
----
-
-## ☁️ Cloud Sync & rclone Setup (WIP)
-
-Back up your metrics vault cleanly to a private cloud instance like Google Drive using `rclone`. `jott` features a native `sync` command to run this backup pipeline.
-
-### 1. Install rclone
-
-```bash
-brew install rclone
-```
-
-### 2. Configure the Cloud Remote
-
-Execute the interactive backend assistant:
-
-```bash
-rclone config
-```
-
-Follow the prompts exactly as outlined below:
-
-1. Choose **`n`** for a *New remote*.
-2. Name the remote target identifier explicitly: **`gdrive`**.
-3. Select **`Google Drive`** from the driver list selection menu.
-4. Leave `client_id` and `client_secret` **blank** to use core system defaults.
-5. Choose scope **`1`** (Full access allocation).
-6. Leave root folders and credentials file pointers **blank**.
-7. Opt **`n`** for advanced parameter overrides.
-8. Select **`y`** for auto-config. Grant validation permissions in your browser.
-9. Review and save configuration records with **`y`**.
-
-### 3. Execution & Automation
-
-Synchronize your logs manually at any time by executing:
-
-```bash
-jott sync
-```
-
-To run your backup automatically in the background at the end of every workday, open your local cron scheduler (`crontab -e`) and map an optimization instruction pointing to your target data vault folder:
+If you configure your `config.toml` file to route your log directory directly inside a public code repository, add your vault folder path to your master `.gitignore` list to avoid pushing confidential client tickets to the public internet:
 
 ```text
-0 18 * * 1-5 rclone sync /Users/username/.jott gdrive:JottBackupVault
+# .gitignore
+archives/
+.jott/
+```
+
+```
 ```
