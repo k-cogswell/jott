@@ -265,11 +265,11 @@ def show_help():
     # Prefixing with 'fr' flags this block as both a Raw String and a formatted literal.
     # This instructs Python's compiler to skip standard escape rules, completely 
     # eliminating any potential backslash 'SyntaxWarning' exceptions inside the ASCII logo.
-    print(fr"""{CLR_TITLE}    _            _   _   
-   (_)  ___     | |_| |_ 
-   | | / _ \ _  | __| __|
-   | || (_) (_) | |_| |_ 
-  _/ | \___/    \__|\__| 
+    print(fr"""{CLR_TITLE}    _         _   _   
+   (_)  ___  | |_| |_ 
+   | | / _ \ | __| __|
+   | || (_) || |_| |_ 
+  _/ | \___/  \__|\__| 
  |__/                   
 
 ======================================================================
