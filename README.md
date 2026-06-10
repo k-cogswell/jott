@@ -175,9 +175,9 @@ Type `:wq` to save and close out of Neovim.
 
 > **Automatic Cache Recalculation:** The moment Neovim closes, `jott` catches the file change handle, completely parses your raw lines, re-sequences the chronologies, and completely regenerates the output report summary table and hours tallies perfectly in the background.
 
-### 📊 05:00 PM — Friday Afternoon OpenAir Entry
+### 📊 05:00 PM — Friday Afternoon Timesheet Entry
 
-It's the end of the week, and you need to submit your time metrics into your company's official management software (OpenAir). Instead of running `jott view` five individual times and clicking through calendar panels, load your high-level weekly matrix:
+It's the end of the week, and you need to submit your time metrics into your company's official management software. Instead of running `jott view` five individual times and clicking through calendar panels, load your high-level weekly matrix:
 
 ```bash
 jott week
