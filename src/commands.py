@@ -215,16 +215,25 @@ def show_weekly_summary(week_modifier=None):
     grand_str = format_duration(grand_total_duration) if grand_total_duration.total_seconds() > 0 else "0m"
     print(f"{CLR_TEXT}└──{CLR_RESET} {CLR_HEAD}Grand Total Weekly Hours:{CLR_RESET} {CLR_CMD}{grand_str}{CLR_RESET}\n")
     
-    # 2. Print an itemized task list, automatically filtered to omit structural breaks
+    # 2. Print an itemized task list, aggregated by task name to show total time per task
     if weekly_breakdowns:
         print(f"{CLR_TITLE}🔍 Itemized Task Notes Reference:{CLR_RESET}")
         for day_title, tasks in weekly_breakdowns.items():
             print(f"\n{CLR_HEAD}### {day_title}{CLR_RESET}")
+            task_totals = {}
+            task_order = []
             for t in tasks:
                 if t['is_break']:
                     continue
-                end_lbl = f"{t['end']} (current)" if t['is_active_current'] else t['end']
-                print(f"  {CLR_TEXT}•{CLR_RESET} [{t['start']} - {end_lbl}] ({CLR_CMD}{t['duration']}{CLR_RESET}) → {t['task']}")
+                name = t['task']
+                if name not in task_totals:
+                    task_totals[name] = timedelta(0)
+                    task_order.append(name)
+                task_totals[name] += t['duration_td']
+            for name in task_order:
+                total_td = task_totals[name]
+                total_str = format_duration(total_td) if total_td.total_seconds() > 0 else "-"
+                print(f"  {CLR_TEXT}•{CLR_RESET} ({CLR_CMD}{total_str}{CLR_RESET}) → {name}")
         print()
 
 def show_status():

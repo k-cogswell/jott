@@ -80,6 +80,7 @@ def calculate_daily_durations(target_date, entries):
             "start": entries[i]["time"],
             "end": end_str,
             "duration": dur_str,
+            "duration_td": duration,
             "task": task,
             "is_break": is_break,
             "is_active_current": is_today and i == len(entries) - 1 and not is_break
