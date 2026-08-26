@@ -80,6 +80,23 @@ def main():
     elif cmd == "status":
         commands.show_status()
         
+    elif cmd == "jira":
+        # Jira integration. Subcommands are kept under one namespace so the
+        # top-level catch-all still treats bare text as a task to log.
+        sub = sys.argv[2] if len(sys.argv) > 2 else "status"
+        flags = sys.argv[3:]
+        if sub == "login":
+            commands.jira_login(from_stdin="--stdin" in flags)
+        elif sub == "logout":
+            commands.jira_logout()
+        elif sub == "status":
+            commands.jira_status(as_json="--json" in flags)
+        elif sub == "issues":
+            commands.jira_issues(as_json="--json" in flags, force_refresh="--refresh" in flags)
+        else:
+            print(f"Error: unknown jira subcommand '{sub}'. Try: login, logout, status, issues.")
+            sys.exit(1)
+
     elif cmd == "sync":
         commands.sync_to_cloud()
         

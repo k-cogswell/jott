@@ -1,9 +1,12 @@
 import os
 import sys
+import json
+import getpass
 import subprocess
 from datetime import datetime, timedelta
 from .config import LOG_BASE_DIR, CONFIG_FILE, CLR_TITLE, CLR_HEAD, CLR_CMD, CLR_TEXT, CLR_RESET, CLR_BOLD
 from .helpers import format_duration, get_ordinal_date
+from . import jira
 from .storage import get_file_path, parse_log, calculate_daily_durations, generate_and_save_report
 
 def log_task(message, custom_dt=None):
@@ -331,6 +334,190 @@ def sync_to_cloud():
     except Exception as e:
         print(f"❌ An error occurred during sync: {e}")
 
+# ======================================================================
+# JIRA INTEGRATION COMMANDS
+# ======================================================================
+
+def _jira_emit_json(payload):
+    """Machine-readable output for the JottBar app. Never includes the token."""
+    print(json.dumps(payload))
+
+
+def jira_login(from_stdin=False):
+    """
+    Verifies an API token and stores it in the Keychain.
+
+    Interactively the token is read with getpass so it is never echoed.
+    With --stdin it is read from the pipe instead, which is how the JottBar
+    Settings pane connects without duplicating any of this logic.
+    """
+    try:
+        config = jira.get_config()
+    except jira.JiraError as e:
+        if from_stdin:
+            _jira_emit_json({"ok": False, "error": str(e)})
+            return
+        print(f"{CLR_TEXT}{e}{CLR_RESET}")
+        sys.exit(1)
+
+    if from_stdin:
+        token = sys.stdin.read().strip()
+        if not token:
+            _jira_emit_json({"ok": False, "error": "No token supplied."})
+            return
+        try:
+            display_name = jira.verify(config, token)
+            jira.store_token(config["email"], token)
+        except jira.JiraError as e:
+            _jira_emit_json({"ok": False, "error": str(e)})
+            return
+        _jira_emit_json({"ok": True, "display_name": display_name})
+        return
+
+    print(f"{CLR_TITLE}Connecting to {config['site']} as {config['email']}{CLR_RESET}")
+    print(f"{CLR_TEXT}Create a token at https://id.atlassian.com/manage-profile/security/api-tokens{CLR_RESET}")
+    if config.get("cloud_id"):
+        print(f"{CLR_TEXT}Using scoped-token routing via cloud id {config['cloud_id']}.{CLR_RESET}")
+
+    try:
+        token = getpass.getpass("API token (input hidden): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled.")
+        sys.exit(1)
+
+    if not token:
+        print(f"{CLR_TEXT}No token entered. Nothing was saved.{CLR_RESET}")
+        sys.exit(1)
+
+    try:
+        display_name = jira.verify(config, token)
+        jira.store_token(config["email"], token)
+    except jira.JiraError as e:
+        print(f"{CLR_TEXT}{e}{CLR_RESET}")
+        sys.exit(1)
+
+    print(f"{CLR_CMD}✅ Connected as {display_name}. Token saved to your Keychain.{CLR_RESET}")
+
+
+def jira_logout():
+    """Removes the stored token."""
+    try:
+        config = jira.get_config()
+    except jira.JiraError as e:
+        print(f"{CLR_TEXT}{e}{CLR_RESET}")
+        sys.exit(1)
+    jira.delete_token(config["email"])
+    print(f"{CLR_CMD}Token removed from your Keychain.{CLR_RESET}")
+
+
+def jira_status(as_json=False):
+    """Reports configuration and connectivity without revealing the token."""
+    try:
+        config = jira.get_config()
+    except jira.JiraError as e:
+        if as_json:
+            _jira_emit_json({"ok": False, "configured": False, "error": str(e)})
+            return
+        print(f"{CLR_TEXT}{e}{CLR_RESET}")
+        sys.exit(1)
+
+    if as_json:
+        token = jira.get_token(config["email"])
+        payload = {
+            "ok": True,
+            "configured": True,
+            "site": config["site"],
+            "email": config["email"],
+            "mode": "scoped" if config.get("cloud_id") else "classic",
+            "jql": config["jql"],
+            "token_stored": bool(token),
+            "valid": False,
+            "display_name": None,
+            "error": None,
+        }
+        if token:
+            try:
+                payload["display_name"] = jira.verify(config, token)
+                payload["valid"] = True
+            except jira.JiraError as e:
+                payload["error"] = str(e)
+        _jira_emit_json(payload)
+        return
+
+    print(f"{CLR_TITLE}🔗 Jira Connection{CLR_RESET}")
+    print(f"  Site:   {CLR_BOLD}{config['site']}{CLR_RESET}")
+    print(f"  Email:  {CLR_BOLD}{config['email']}{CLR_RESET}")
+    print(f"  Mode:   {CLR_BOLD}{'scoped token' if config.get('cloud_id') else 'classic token'}{CLR_RESET}")
+    print(f"  JQL:    {CLR_TEXT}{config['jql']}{CLR_RESET}")
+
+    token = jira.get_token(config["email"])
+    if not token:
+        print(f"  Token:  {CLR_TEXT}not stored — run 'jott jira login'{CLR_RESET}")
+        return
+
+    try:
+        display_name = jira.verify(config, token)
+        print(f"  Token:  {CLR_CMD}valid (authenticated as {display_name}){CLR_RESET}")
+    except jira.JiraError as e:
+        print(f"  Token:  {CLR_TEXT}{e}{CLR_RESET}")
+
+
+def jira_issues(as_json=False, force_refresh=False):
+    """
+    Lists assigned issues, served from a short-lived cache so autocomplete
+    stays instant and keeps working while offline.
+    """
+    cache = jira.read_cache()
+    age = jira.cache_age(cache)
+    fresh = age is not None and age < jira.CACHE_TTL_SECONDS
+
+    if fresh and not force_refresh:
+        issues, stale, error = cache["issues"], False, None
+    else:
+        try:
+            config = jira.get_config()
+            token = jira.get_token(config["email"])
+            if not token:
+                raise jira.JiraError("No API token stored. Run 'jott jira login'.")
+            issues = jira.fetch_issues(config, token)
+            jira.write_cache(issues)
+            stale, error = False, None
+        except jira.JiraError as e:
+            # Fall back to whatever is cached rather than losing autocomplete
+            # entirely because the network blipped.
+            if cache:
+                issues, stale, error = cache["issues"], True, str(e)
+            else:
+                if as_json:
+                    _jira_emit_json({"ok": False, "issues": [], "error": str(e)})
+                    return
+                print(f"{CLR_TEXT}{e}{CLR_RESET}")
+                sys.exit(1)
+
+    if as_json:
+        _jira_emit_json({
+            "ok": True,
+            "issues": issues,
+            "stale": stale,
+            "error": error,
+            "fetched_at": (cache or {}).get("fetched_at"),
+        })
+        return
+
+    if not issues:
+        print(f"{CLR_TEXT}No issues matched your JQL.{CLR_RESET}")
+        return
+
+    print(f"\n{CLR_TITLE}🎫 Issues Assigned To You{CLR_RESET}")
+    if stale:
+        print(f"{CLR_TEXT}(showing cached results — {error}){CLR_RESET}")
+    width = max(len(i["key"]) for i in issues)
+    for issue in issues:
+        status = f" {CLR_TEXT}[{issue['status']}]{CLR_RESET}" if issue["status"] else ""
+        print(f"  {CLR_CMD}{issue['key']:<{width}}{CLR_RESET}  {issue['summary']}{status}")
+    print()
+
+
 def show_help():
     """Outputs structured usage documentation and your colorized ASCII branding logo."""
     # Prefixing with 'fr' flags this block as both a Raw String and a formatted literal.
@@ -372,6 +559,13 @@ ACTIVE LOG OUTPUT TARGET:
   {CLR_CMD}view week [date]{CLR_RESET}             Renders the matrix grid for the week containing [date].
   {CLR_CMD}week [modifier]{CLR_RESET}              Shorthand wrapper for 'view week [modifier]'.
   {CLR_CMD}sync{CLR_RESET}                        Backs up archive directory structure via rclone.
+
+{CLR_HEAD}JIRA:{CLR_RESET}
+  {CLR_CMD}jira login{CLR_RESET}                  Stores your Jira API token in the macOS Keychain.
+  {CLR_CMD}jira status{CLR_RESET}                 Shows connection settings and verifies the token.
+  {CLR_CMD}jira issues{CLR_RESET}                 Lists the issues currently assigned to you.
+  {CLR_CMD}jira issues --refresh{CLR_RESET}       Bypasses the 15 minute cache.
+  {CLR_CMD}jira logout{CLR_RESET}                 Removes the stored token.
   {CLR_CMD}help{CLR_RESET}                        Presents this guide.
 
 {CLR_HEAD}SPECIAL KEYWORDS:{CLR_RESET}

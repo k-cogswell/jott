@@ -8,6 +8,34 @@ CONFIG_DIR = os.path.expanduser("~/.config/jott")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.toml")
 DEFAULT_LOG_DIR = os.path.expanduser("~/.jott")
 
+def load_settings():
+    """
+    Parses every key/value pair out of config.toml into a plain dict.
+    Same deliberately light token scan as before -- no external Pip
+    dependencies -- just generalised beyond a single key so that the
+    Jira integration can share the file.
+    """
+    settings = {}
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            for line in f:
+                clean_line = line.strip()
+                if not clean_line or clean_line.startswith("#"):
+                    continue
+                if "=" in clean_line:
+                    key, val = clean_line.split("=", 1)
+                    settings[key.strip()] = val.strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return settings
+
+
+def get_setting(key, default=None):
+    """Reads a single config value on demand, so edits apply without a relaunch."""
+    value = load_settings().get(key)
+    return value if value not in (None, "") else default
+
+
 def load_configuration():
     """
     Resolves the targeted output directory for storing your log vaults.
@@ -23,6 +51,12 @@ def load_configuration():
                 f.write("# 🕒 Jott CLI Configuration File\n")
                 f.write("# You can change where your markdown log archives are saved below:\n\n")
                 f.write(f'log_dir = "{DEFAULT_LOG_DIR}"\n')
+                f.write("\n# --- Jira (optional) ---------------------------------------\n")
+                f.write("# Run 'jott jira login' after filling these in.\n")
+                f.write("# The API token is NOT stored here -- it goes in your Keychain.\n")
+                f.write('# jira_site = "https://yourcompany.atlassian.net"\n')
+                f.write('# jira_email = "you@company.com"\n')
+                f.write('# jira_cloud_id = ""   # only for scoped API tokens\n')
             return DEFAULT_LOG_DIR
         except Exception:
             return DEFAULT_LOG_DIR
