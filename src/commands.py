@@ -48,6 +48,68 @@ def edit_ledger(target_date):
     except Exception as e:
         print(f"{CLR_TEXT}An error occurred executing your editor context: {e}{CLR_RESET}")
 
+def rewrite_ledger(target_date):
+    """
+    Replaces every entry for a day with the set supplied on stdin, then
+    recompiles the summary table. Reads `HH:MM:SS | task` lines -- the same
+    shape parse_log produces, minus the leading '- ' marker.
+
+    This is the write primitive the JottBar menubar app uses for in-app
+    editing. Routing edits through here keeps on-disk layout and report
+    generation owned by this module rather than duplicated in the app.
+    """
+    raw = sys.stdin.read()
+    entries = []
+
+    for lineno, line in enumerate(raw.splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        if " | " not in line:
+            print(f"Error: line {lineno} is not 'HH:MM:SS | task': {line}")
+            sys.exit(1)
+
+        time_str, message = line.split(" | ", 1)
+        time_str, message = time_str.strip(), message.strip()
+
+        # Validate before touching the file -- a partial write here would
+        # destroy real tracked hours.
+        try:
+            # Normalise while validating. Entry lines are sorted as strings
+            # everywhere in this codebase, so an unpadded hour like '9:00:00'
+            # would sort after '10:00:00' and scramble the chronology.
+            time_str = datetime.strptime(time_str, "%H:%M:%S").strftime("%H:%M:%S")
+        except ValueError:
+            print(f"Error: line {lineno} has an invalid timestamp '{time_str}'. Expected HH:MM:SS.")
+            sys.exit(1)
+        if not message:
+            print(f"Error: line {lineno} has an empty task description.")
+            sys.exit(1)
+
+        entries.append((time_str, message))
+
+    entries.sort(key=lambda e: e[0])
+    file_path = get_file_path(target_date)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+    if not entries:
+        # Every row was deleted. Drop the file rather than leave an orphaned
+        # summary table describing nothing.
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        print(f"Cleared all entries for {target_date}.")
+        return
+
+    with open(file_path, "w") as f:
+        f.write(f"# Time Log: {target_date}\n")
+        for time_str, message in entries:
+            f.write(f"- {time_str} | {message}\n")
+
+    # Re-run the write-cached engine so the markdown table matches the edits
+    generate_and_save_report(target_date)
+    noun = "entry" if len(entries) == 1 else "entries"
+    print(f"Updated {len(entries)} {noun} for {target_date}.")
+
 def continue_previous_task(target_id=None):
     """
     Resumes a task. It either crawls back sequentially to find your 
@@ -300,6 +362,7 @@ ACTIVE LOG OUTPUT TARGET:
   {CLR_CMD}edit{CLR_RESET}                        Opens today's log in Neovim and compiles it on exit.
   {CLR_CMD}edit yesterday{CLR_RESET}              Opens yesterday's log in Neovim.
   {CLR_CMD}edit YYYY-MM-DD{CLR_RESET}             Opens any explicit targeted historical log in Neovim.
+  {CLR_CMD}rewrite [date]{CLR_RESET}              Replaces a day's entries with 'HH:MM:SS | task' lines from stdin.
   {CLR_CMD}status{CLR_RESET}                      Displays active task & runtime.
   {CLR_CMD}view{CLR_RESET}                        Streams today's pre-calculated summary from disk.
   {CLR_CMD}view yesterday{CLR_RESET}              Streams yesterday's summary from disk.

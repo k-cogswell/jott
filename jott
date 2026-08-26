@@ -36,6 +36,12 @@ def main():
         target_date = resolve_date(sys.argv[2]) if len(sys.argv) > 2 else datetime.now().strftime("%Y-%m-%d")
         commands.edit_ledger(target_date)
         
+    elif cmd == "rewrite":
+        # Bulk-replaces a day's entries from stdin. Used by the JottBar
+        # menubar app's in-app editor; also usable from a shell pipeline.
+        target_date = resolve_date(sys.argv[2]) if len(sys.argv) > 2 else datetime.now().strftime("%Y-%m-%d")
+        commands.rewrite_ledger(target_date)
+
     elif cmd == "continue":
         # Captures the optional position ID row integer argument
         target_id = sys.argv[2] if len(sys.argv) > 2 else None
