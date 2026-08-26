@@ -20,8 +20,10 @@ final class LedgerStore: ObservableObject {
 
     @Published private(set) var summary = DaySummary()
     @Published private(set) var lastMessage: String?
+    @Published private(set) var jira = JiraBridge.Snapshot()
 
     private var timer: Timer?
+    private var jiraTimer: Timer?
     private var lastSignature: String = ""
 
     init() {
@@ -29,6 +31,36 @@ final class LedgerStore: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
+        // Jira is refreshed on a slow cadence; the CLI's own 15 minute cache
+        // means most of these calls never touch the network.
+        refreshJira()
+        jiraTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshJira() }
+        }
+    }
+
+    /// Fetches assigned issues off the main thread. Failures are held in the
+    /// snapshot rather than surfaced as alerts -- Jira is optional, and a
+    /// broken connection must never block logging time.
+    func refreshJira(force: Bool = false) {
+        Task.detached {
+            let snapshot = JiraBridge.issues(refresh: force)
+            await MainActor.run { self.jira = snapshot }
+        }
+    }
+
+    /// Recent tasks first (most likely to repeat), then assigned issues that
+    /// are not already represented by a recent entry.
+    var suggestions: [Suggestion] {
+        var out = summary.recentTasks.map {
+            Suggestion(kind: .recent, taskText: $0, key: nil, detail: nil)
+        }
+        let seen = Set(out.map { $0.taskText.lowercased() })
+        for issue in jira.issues where !seen.contains(issue.taskText.lowercased()) {
+            out.append(Suggestion(kind: .jira, taskText: issue.taskText,
+                                  key: issue.key, detail: issue.status))
+        }
+        return out
     }
 
     /// Reload only when the file actually changed, but always recompute

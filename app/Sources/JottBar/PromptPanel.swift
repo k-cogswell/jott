@@ -57,7 +57,7 @@ final class PromptController: NSObject, NSWindowDelegate {
 
         let view = PromptView(
             state: state,
-            suggestions: store.summary.recentTasks,
+            suggestions: store.suggestions,
             currentTask: store.summary.currentTask,
             onSubmit: { [weak self] text, minutesAgo in
                 if let minutesAgo, minutesAgo > 0 {
@@ -279,7 +279,7 @@ enum PromptMode {
 
 struct PromptView: View {
     @ObservedObject var state: PromptState
-    let suggestions: [String]
+    let suggestions: [Suggestion]
     let currentTask: String?
     /// (task, minutesAgo). minutesAgo is nil for an immediate entry.
     let onSubmit: (String, Int?) -> Void
@@ -290,12 +290,11 @@ struct PromptView: View {
 
     private static let presets = [5, 15, 30, 60]
 
-    /// Recent tasks filtered by what has been typed so far.
-    private var matches: [String] {
-        let q = text.trimmingCharacters(in: .whitespaces).lowercased()
-        let pool = suggestions.filter { $0.lowercased() != q }
-        guard !q.isEmpty else { return Array(pool.prefix(5)) }
-        return Array(pool.filter { $0.lowercased().contains(q) }.prefix(5))
+    /// Recent tasks and assigned Jira issues, filtered by what is typed.
+    private var matches: [Suggestion] {
+        let q = text.trimmingCharacters(in: .whitespaces)
+        let pool = suggestions.filter { $0.taskText.lowercased() != q.lowercased() }
+        return Array(pool.filter { $0.matches(q) }.prefix(6))
     }
 
     private var isRetroactive: Bool { state.mode == .retroactive }
@@ -340,18 +339,42 @@ struct PromptView: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(matches.enumerated()), id: \.offset) { index, match in
-                        HStack {
-                            Image(systemName: "arrow.uturn.backward")
+                        HStack(spacing: 8) {
+                            Image(systemName: match.kind == .jira
+                                  ? "ticket" : "arrow.uturn.backward")
                                 .font(.system(size: 11))
-                                .foregroundStyle(.tertiary)
-                            Text(match).lineLimit(1)
+                                .foregroundStyle(match.kind == .jira
+                                                 ? AnyShapeStyle(Color.accentColor)
+                                                 : AnyShapeStyle(.tertiary))
+                                .frame(width: 14)
+
+                            if let key = match.key {
+                                Text(key)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .bold()
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(Color.accentColor.opacity(0.15))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                Text(match.taskText.dropFirst(key.count).trimmingCharacters(in: .whitespaces))
+                                    .lineLimit(1)
+                            } else {
+                                Text(match.taskText).lineLimit(1)
+                            }
+
                             Spacer()
+
+                            if let detail = match.detail, !detail.isEmpty {
+                                Text(detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         .padding(.horizontal, 18)
                         .padding(.vertical, 7)
                         .background(index == selection ? Color.accentColor.opacity(0.18) : .clear)
                         .contentShape(Rectangle())
-                        .onTapGesture { onSubmit(match, isRetroactive ? minutesAgo : nil) }
+                        .onTapGesture { onSubmit(match.taskText, isRetroactive ? minutesAgo : nil) }
                     }
                 }
                 .padding(.vertical, 6)
@@ -433,7 +456,9 @@ struct PromptView: View {
     }
 
     private func submit() {
-        let value = (selection >= 0 && selection < matches.count) ? matches[selection] : text
+        let value = (selection >= 0 && selection < matches.count)
+            ? matches[selection].taskText
+            : text
         onSubmit(value, isRetroactive ? minutesAgo : nil)
     }
 }

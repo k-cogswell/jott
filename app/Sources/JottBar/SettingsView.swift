@@ -43,6 +43,12 @@ struct SettingsView: View {
     @State private var recording: HotKeyAction?
     @State private var failed: Set<HotKeyAction> = []
 
+    @EnvironmentObject private var store: LedgerStore
+    @State private var jiraStatus = JiraStatus.unknown
+    @State private var jiraToken = ""
+    @State private var jiraMessage: String?
+    @State private var jiraWorking = false
+
     private var globalActions: [HotKeyAction] { HotKeyAction.allCases.filter(\.isGlobal) }
     private var localActions: [HotKeyAction] { HotKeyAction.allCases.filter { !$0.isGlobal } }
 
@@ -80,6 +86,8 @@ struct SettingsView: View {
                 }
             }
 
+            jiraSection
+
             Section("Command Line Tool") {
                 HStack {
                     TextField("Path to jott", text: $cliPath)
@@ -102,10 +110,105 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(minWidth: 520, minHeight: 420)
-        .onAppear(perform: reloadBindings)
+        .onAppear {
+            reloadBindings()
+            reloadJira()
+        }
     }
 
     // ------------------------------------------------------------------
+
+    @ViewBuilder
+    private var jiraSection: some View {
+        Section {
+            if jiraStatus.configured == true {
+                LabeledContent("Site", value: jiraStatus.site ?? "—")
+                LabeledContent("Account", value: jiraStatus.email ?? "—")
+                LabeledContent("Token type",
+                               value: jiraStatus.mode == "scoped" ? "Scoped" : "Classic")
+
+                if jiraStatus.valid == true {
+                    Label("Connected as \(jiraStatus.displayName ?? "your account") — \(store.jira.issues.count) issues assigned",
+                          systemImage: "checkmark.circle.fill")
+                        .font(.caption).foregroundStyle(.green)
+                } else if jiraStatus.tokenStored == true {
+                    Label(jiraStatus.error ?? "Stored token is not working.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.orange)
+                } else {
+                    Label("No token stored yet.", systemImage: "key")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
+                HStack {
+                    SecureField("API token", text: $jiraToken)
+                        .textFieldStyle(.roundedBorder)
+                    Button(jiraWorking ? "Connecting…" : "Connect") { connectJira() }
+                        .disabled(jiraToken.isEmpty || jiraWorking)
+                }
+
+                HStack {
+                    Button("Refresh Issues") {
+                        store.refreshJira(force: true)
+                        jiraMessage = "Refreshing…"
+                    }
+                    Button("Disconnect") {
+                        JiraBridge.disconnect()
+                        jiraToken = ""
+                        jiraMessage = "Token removed."
+                        reloadJira()
+                    }
+                    .disabled(jiraStatus.tokenStored != true)
+                    Spacer()
+                    Button("Open config.toml") {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: JottConfig.configFile))
+                    }
+                }
+
+                if let jiraMessage {
+                    Text(jiraMessage).font(.caption).foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Jira is not configured.")
+                    .font(.callout)
+                Text("Add jira_site and jira_email to config.toml, then come back here to paste your API token.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Open config.toml") {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: JottConfig.configFile))
+                }
+            }
+        } header: {
+            Text("Jira")
+        } footer: {
+            Text("Assigned issues appear in the capture prompt. Your token is stored in the macOS Keychain, never in config.toml.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func connectJira() {
+        jiraWorking = true
+        jiraMessage = nil
+        let token = jiraToken
+        Task.detached {
+            let result = JiraBridge.connect(token: token)
+            await MainActor.run {
+                jiraWorking = false
+                jiraMessage = result.message
+                if result.ok {
+                    jiraToken = ""      // do not keep the secret in view state
+                    store.refreshJira(force: true)
+                }
+                reloadJira()
+            }
+        }
+    }
+
+    private func reloadJira() {
+        Task.detached {
+            let status = JiraBridge.status()
+            await MainActor.run { jiraStatus = status }
+        }
+    }
 
     @ViewBuilder
     private func row(_ action: HotKeyAction) -> some View {
