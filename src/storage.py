@@ -162,3 +162,20 @@ def is_unclosed(date_str):
     if last["message"].lower() in ["stop", "break", "end"]:
         return None
     return {"task": last["message"], "since": last["time"]}
+
+
+def iter_log_dates():
+    """Yields every YYYY-MM-DD that has a ledger on disk, oldest first."""
+    if not os.path.isdir(LOG_BASE_DIR):
+        return
+    for year in sorted(os.listdir(LOG_BASE_DIR)):
+        year_path = os.path.join(LOG_BASE_DIR, year)
+        if not os.path.isdir(year_path):
+            continue
+        for month in sorted(os.listdir(year_path)):
+            month_path = os.path.join(year_path, month)
+            if not os.path.isdir(month_path):
+                continue
+            for name in sorted(os.listdir(month_path)):
+                if name.endswith(".md"):
+                    yield name[:-3]

@@ -98,6 +98,23 @@ def main():
     elif cmd == "status":
         commands.show_status()
         
+    elif cmd == "find":
+        # Full-text search across every ledger on disk.
+        if len(sys.argv) < 3:
+            print('Error: Missing search text. Use: jott find "auth refactor"')
+            sys.exit(1)
+        flags = [a for a in sys.argv[3:] if a.startswith("--")]
+        terms = [a for a in sys.argv[2:] if not a.startswith("--")]
+        limit = 50
+        if "--limit" in sys.argv:
+            try:
+                limit = int(sys.argv[sys.argv.index("--limit") + 1])
+            except (IndexError, ValueError):
+                print("Error: --limit needs a number.")
+                sys.exit(1)
+            terms = [t for t in terms if t != str(limit)]
+        commands.find_entries(" ".join(terms), limit=limit, as_json="--json" in flags)
+
     elif cmd == "jira":
         # Jira integration. Subcommands are kept under one namespace so the
         # top-level catch-all still treats bare text as a task to log.

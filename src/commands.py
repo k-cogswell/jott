@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from .config import LOG_BASE_DIR, CONFIG_FILE, CLR_TITLE, CLR_HEAD, CLR_CMD, CLR_TEXT, CLR_RESET, CLR_BOLD
 from .helpers import format_duration, get_ordinal_date
 from . import jira
-from .storage import get_file_path, parse_log, calculate_daily_durations, generate_and_save_report, is_unclosed
+from .storage import get_file_path, parse_log, calculate_daily_durations, generate_and_save_report, is_unclosed, iter_log_dates
 
 def log_task(message, custom_dt=None):
     """Saves a fresh tracking row milestone directly to your historical logs."""
@@ -702,6 +702,56 @@ def _warn_unclosed(date_str):
     print(f"   Fix it with: {CLR_CMD}jott edit {date_str}{CLR_RESET}  (add a 'stop' line at the real end time)")
 
 
+def find_entries(query, limit=50, as_json=False):
+    """
+    Searches every ledger on disk for entries whose text matches, newest
+    first, with the time each one accounted for.
+    """
+    needle = query.lower()
+    matches = []
+
+    for date_str in reversed(list(iter_log_dates())):
+        entries = parse_log(get_file_path(date_str))
+        if not entries:
+            continue
+        rows, _ = calculate_daily_durations(date_str, entries)
+        for row in rows:
+            if needle in row["task"].lower():
+                matches.append({
+                    "date": date_str,
+                    "start": row["start"],
+                    "end": row["end"],
+                    "duration": row["duration"],
+                    "seconds": int(row["duration_td"].total_seconds()),
+                    "task": row["task"],
+                })
+                if len(matches) >= limit:
+                    break
+        if len(matches) >= limit:
+            break
+
+    total_seconds = sum(m["seconds"] for m in matches)
+
+    if as_json:
+        _jira_emit_json({"ok": True, "query": query, "matches": matches,
+                         "total_seconds": total_seconds})
+        return
+
+    if not matches:
+        print(f"{CLR_TEXT}No entries matching '{query}'.{CLR_RESET}")
+        return
+
+    print(f"\n{CLR_TITLE}🔍 Entries matching '{query}'{CLR_RESET}\n")
+    task_width = max(len(m["task"]) for m in matches)
+    for m in matches:
+        print(f"  {CLR_TEXT}{m['date']}{CLR_RESET}  {CLR_BOLD}{m['start'][:5]}{CLR_RESET}  "
+              f"{CLR_CMD}{m['duration']:>7}{CLR_RESET}  {m['task']:<{task_width}}")
+
+    total = format_duration(timedelta(seconds=total_seconds))
+    noun = "entry" if len(matches) == 1 else "entries"
+    print(f"\n{CLR_TEXT}└──{CLR_RESET} {CLR_HEAD}{len(matches)} {noun}, {CLR_RESET}{CLR_CMD}{total}{CLR_RESET} total\n")
+
+
 def show_help():
     """Outputs structured usage documentation and your colorized ASCII branding logo."""
     # Prefixing with 'fr' flags this block as both a Raw String and a formatted literal.
@@ -742,6 +792,8 @@ ACTIVE LOG OUTPUT TARGET:
   {CLR_CMD}view week [num]{CLR_RESET}              Renders the matrix grid from [num] weeks ago.
   {CLR_CMD}view week [date]{CLR_RESET}             Renders the matrix grid for the week containing [date].
   {CLR_CMD}week [modifier]{CLR_RESET}              Shorthand wrapper for 'view week [modifier]'.
+  {CLR_CMD}find "[text]"{CLR_RESET}                Searches every ledger for matching entries.
+  {CLR_CMD}find "[text]" --limit 20{CLR_RESET}    Caps how many matches are shown (default 50).
   {CLR_CMD}sync{CLR_RESET}                        Backs up archive directory structure via rclone.
 
 {CLR_HEAD}JIRA:{CLR_RESET}
