@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from .config import LOG_BASE_DIR, CONFIG_FILE, CLR_TITLE, CLR_HEAD, CLR_CMD, CLR_TEXT, CLR_RESET, CLR_BOLD
 from .helpers import format_duration, get_ordinal_date
 from . import jira
-from .storage import get_file_path, parse_log, calculate_daily_durations, generate_and_save_report
+from .storage import get_file_path, parse_log, calculate_daily_durations, generate_and_save_report, is_unclosed
 
 def log_task(message, custom_dt=None):
     """Saves a fresh tracking row milestone directly to your historical logs."""
@@ -219,6 +219,7 @@ def show_summary(target_date):
     
     total_str = format_duration(total_work_duration) if total_work_duration.total_seconds() > 0 else "0m"
     print(f"{CLR_TEXT}└──{CLR_RESET} {CLR_HEAD}Total Logged Hours:{CLR_RESET} {CLR_CMD}{total_str}{CLR_RESET}\n")
+    _warn_unclosed(target_date)
 
 def show_weekly_summary(week_modifier=None):
     """
@@ -279,6 +280,10 @@ def show_weekly_summary(week_modifier=None):
         
     grand_str = format_duration(grand_total_duration) if grand_total_duration.total_seconds() > 0 else "0m"
     print(f"{CLR_TEXT}└──{CLR_RESET} {CLR_HEAD}Grand Total Weekly Hours:{CLR_RESET} {CLR_CMD}{grand_str}{CLR_RESET}\n")
+
+    # Any day here whose final entry never closed is under-reporting above.
+    for row in weekly_grid:
+        _warn_unclosed(row[1])
     
     # 2. Print an itemized task list, aggregated by task name to show total time per task
     if weekly_breakdowns:
@@ -679,6 +684,22 @@ def jira_issues(as_json=False, force_refresh=False):
         print(f"\n{CLR_HEAD}⚠ Showing the first {len(issues)} issues — your query matches more.{CLR_RESET}")
         print(f"{CLR_TEXT}  Narrow the JQL, or raise jira_issue_limit in {CONFIG_FILE}.{CLR_RESET}")
     print()
+
+
+def _warn_unclosed(date_str):
+    """
+    Flags a past day whose final entry never got closed.
+
+    That entry has no following timestamp to measure against, so its time is
+    not counted anywhere. Warning is the whole point: the failure is
+    otherwise completely silent.
+    """
+    unclosed = is_unclosed(date_str)
+    if not unclosed:
+        return
+    print(f"{CLR_HEAD}⚠  {date_str} was never closed out.{CLR_RESET}")
+    print(f"   '{unclosed['task']}' has been open since {unclosed['since']} and is NOT counted.")
+    print(f"   Fix it with: {CLR_CMD}jott edit {date_str}{CLR_RESET}  (add a 'stop' line at the real end time)")
 
 
 def show_help():

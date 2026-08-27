@@ -142,3 +142,23 @@ def generate_and_save_report(target_date):
     # Overwrite the file to save the newly compiled state cleanly
     with open(file_path, "w") as f:
         f.write("\n".join(lines) + "\n")
+
+
+def is_unclosed(date_str):
+    """
+    True when a PAST day's final entry is a work task rather than a break.
+
+    Duration is derived from the next entry's start time, so a trailing work
+    entry has nothing to measure against and contributes zero to the day's
+    total. On a past date that time is silently lost -- this is what lets
+    callers warn about it instead of quietly under-reporting.
+    """
+    if date_str == datetime.now().strftime("%Y-%m-%d"):
+        return None
+    entries = parse_log(get_file_path(date_str))
+    if not entries:
+        return None
+    last = entries[-1]
+    if last["message"].lower() in ["stop", "break", "end"]:
+        return None
+    return {"task": last["message"], "since": last["time"]}
