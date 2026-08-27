@@ -75,13 +75,13 @@ if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
     sleep 1
 fi
 
-say "Installing to $APP_PATH…"
+say "Installing to ${APP_PATH}…"
 mkdir -p "$INSTALL_DIR"
 rm -rf "$APP_PATH"
 cp -R "$STAGE/$APP_NAME.app" "$APP_PATH"
 
 # Point the app at this checkout's CLI so it works regardless of PATH.
-say "Pointing JottBar at $CLI_PATH…"
+say "Pointing JottBar at ${CLI_PATH}…"
 defaults write "$BUNDLE_ID" cliPath -string "$CLI_PATH"
 
 chmod +x "$CLI_PATH" 2>/dev/null || true
