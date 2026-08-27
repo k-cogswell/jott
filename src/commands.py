@@ -389,6 +389,15 @@ def jira_login(from_stdin=False):
         print(f"{CLR_TEXT}No token entered. Nothing was saved.{CLR_RESET}")
         sys.exit(1)
 
+    # A terminal in canonical mode caps a single input line at 1023 bytes and
+    # discards anything longer, so a very long scoped token cannot be pasted
+    # at a prompt at all. Point at the pipe instead of failing obscurely.
+    if len(token) >= 1023:
+        print(f"{CLR_TEXT}That token is {len(token)} characters, which your terminal "
+              f"may have truncated at its 1023-byte line limit.{CLR_RESET}")
+        print(f"{CLR_TEXT}If login fails, pipe it instead:{CLR_RESET}")
+        print(f"  {CLR_CMD}printf %s \"$TOKEN\" | jott jira login --stdin{CLR_RESET}")
+
     try:
         display_name = jira.verify(config, token)
         jira.store_token(config["email"], token)
@@ -422,7 +431,11 @@ def jira_status(as_json=False):
         sys.exit(1)
 
     if as_json:
-        token = jira.get_token(config["email"])
+        try:
+            token = jira.get_token(config["email"])
+        except jira.JiraError as e:
+            _jira_emit_json({"ok": False, "configured": True, "error": str(e)})
+            return
         payload = {
             "ok": True,
             "configured": True,
@@ -450,7 +463,11 @@ def jira_status(as_json=False):
     print(f"  Mode:   {CLR_BOLD}{'scoped token' if config.get('cloud_id') else 'classic token'}{CLR_RESET}")
     print(f"  JQL:    {CLR_TEXT}{config['jql']}{CLR_RESET}")
 
-    token = jira.get_token(config["email"])
+    try:
+        token = jira.get_token(config["email"])
+    except jira.JiraError as e:
+        print(f"  Token:  {CLR_TEXT}{e}{CLR_RESET}")
+        return
     if not token:
         print(f"  Token:  {CLR_TEXT}not stored — run 'jott jira login'{CLR_RESET}")
         return
@@ -462,6 +479,65 @@ def jira_status(as_json=False):
         print(f"  Token:  {CLR_TEXT}{e}{CLR_RESET}")
 
 
+def jira_jql(query=None, as_json=False, reset=False):
+    """
+    Shows or sets the JQL that drives the issue list.
+
+    A new query is validated against Jira before it is saved -- a typo in a
+    field name would otherwise show up much later as an empty autocomplete
+    list with nothing to explain it.
+    """
+    # Showing the current query needs no credentials at all.
+    if query is None and not reset:
+        current = jira.get_jql()
+        if as_json:
+            _jira_emit_json({"ok": True, "jql": current, "is_default": jira.is_default_jql()})
+            return
+        print(f"{CLR_TITLE}Jira issue query{CLR_RESET}")
+        print(f"  {CLR_BOLD}{current}{CLR_RESET}")
+        if jira.is_default_jql():
+            print(f"  {CLR_TEXT}(the default — set your own with: jott jira jql \"<query>\"){CLR_RESET}")
+        return
+
+    if reset:
+        jira.reset_jql()
+        if as_json:
+            _jira_emit_json({"ok": True, "jql": jira.get_jql(), "is_default": True})
+            return
+        print(f"{CLR_CMD}✅ Restored the default query.{CLR_RESET}")
+        print(f"  {CLR_TEXT}{jira.get_jql()}{CLR_RESET}")
+        return
+
+    try:
+        config = jira.get_config()
+        token = jira.get_token(config["email"])
+        if not token:
+            raise jira.JiraError("No API token stored. Run 'jott jira login'.")
+        matched, exact = jira.validate_jql(config, token, query)
+        jira.set_jql(query)
+    except jira.JiraError as e:
+        if as_json:
+            _jira_emit_json({"ok": False, "error": str(e)})
+            return
+        print(f"{CLR_TEXT}{e}{CLR_RESET}")
+        sys.exit(1)
+
+    tally = f"{matched}" if exact else f"{matched}+"
+
+    if as_json:
+        _jira_emit_json({"ok": True, "jql": jira.get_jql(), "is_default": False,
+                         "matched": matched, "matched_exact": exact})
+        return
+
+    print(f"{CLR_CMD}✅ Saved. {tally} issue(s) match.{CLR_RESET}")
+    print(f"  {CLR_TEXT}{query}{CLR_RESET}")
+    if matched == 0:
+        # Jira accepts an unknown field name and returns nothing, so an
+        # empty result is worth calling out rather than reading as success.
+        print(f"{CLR_TEXT}Nothing matched — check field names and values; "
+              f"Jira accepts an unknown field without complaint.{CLR_RESET}")
+
+
 def jira_issues(as_json=False, force_refresh=False):
     """
     Lists assigned issues, served from a short-lived cache so autocomplete
@@ -470,23 +546,26 @@ def jira_issues(as_json=False, force_refresh=False):
     cache = jira.read_cache()
     age = jira.cache_age(cache)
     fresh = age is not None and age < jira.CACHE_TTL_SECONDS
+    limit = jira.get_issue_limit()
 
     if fresh and not force_refresh:
         issues, stale, error = cache["issues"], False, None
+        truncated = bool(cache.get("truncated"))
     else:
         try:
             config = jira.get_config()
             token = jira.get_token(config["email"])
             if not token:
                 raise jira.JiraError("No API token stored. Run 'jott jira login'.")
-            issues = jira.fetch_issues(config, token)
-            jira.write_cache(issues)
+            issues, truncated = jira.fetch_issues(config, token, limit=limit)
+            jira.write_cache(issues, truncated=truncated, limit=limit)
             stale, error = False, None
         except jira.JiraError as e:
             # Fall back to whatever is cached rather than losing autocomplete
             # entirely because the network blipped.
             if cache:
                 issues, stale, error = cache["issues"], True, str(e)
+                truncated = bool(cache.get("truncated"))
             else:
                 if as_json:
                     _jira_emit_json({"ok": False, "issues": [], "error": str(e)})
@@ -500,6 +579,8 @@ def jira_issues(as_json=False, force_refresh=False):
             "issues": issues,
             "stale": stale,
             "error": error,
+            "truncated": truncated,
+            "limit": limit,
             "fetched_at": (cache or {}).get("fetched_at"),
         })
         return
@@ -515,6 +596,14 @@ def jira_issues(as_json=False, force_refresh=False):
     for issue in issues:
         status = f" {CLR_TEXT}[{issue['status']}]{CLR_RESET}" if issue["status"] else ""
         print(f"  {CLR_CMD}{issue['key']:<{width}}{CLR_RESET}  {issue['summary']}{status}")
+
+    if truncated:
+        # Never drop the tail silently: an issue missing from autocomplete
+        # because it sorted past the limit is indistinguishable from a broken
+        # query. Printed after the list so it is the last thing on screen
+        # rather than scrolled away above a few hundred rows.
+        print(f"\n{CLR_HEAD}⚠ Showing the first {len(issues)} issues — your query matches more.{CLR_RESET}")
+        print(f"{CLR_TEXT}  Narrow the JQL, or raise jira_issue_limit in {CONFIG_FILE}.{CLR_RESET}")
     print()
 
 
@@ -565,6 +654,9 @@ ACTIVE LOG OUTPUT TARGET:
   {CLR_CMD}jira status{CLR_RESET}                 Shows connection settings and verifies the token.
   {CLR_CMD}jira issues{CLR_RESET}                 Lists the issues currently assigned to you.
   {CLR_CMD}jira issues --refresh{CLR_RESET}       Bypasses the 15 minute cache.
+  {CLR_CMD}jira jql{CLR_RESET}                    Shows the query that picks which issues appear.
+  {CLR_CMD}jira jql "<query>"{CLR_RESET}          Sets your own JQL, validated before saving.
+  {CLR_CMD}jira jql --reset{CLR_RESET}            Restores the default query.
   {CLR_CMD}jira logout{CLR_RESET}                 Removes the stored token.
   {CLR_CMD}help{CLR_RESET}                        Presents this guide.
 

@@ -145,7 +145,10 @@ enum Ledger {
 extension Date {
     var secondsSinceMidnight: TimeInterval {
         let c = Calendar.current.dateComponents([.hour, .minute, .second], from: self)
-        return TimeInterval((c.hour ?? 0) * 3600 + (c.minute ?? 0) * 60 + (c.second ?? 0))
+        let hour: Int = c.hour ?? 0
+        let minute: Int = c.minute ?? 0
+        let second: Int = c.second ?? 0
+        return TimeInterval(hour * 3600 + minute * 60 + second)
     }
 }
 

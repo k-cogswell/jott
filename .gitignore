@@ -1,7 +1,8 @@
 /archives
 .DS_Store
 /.git
-*/__pycache__
+__pycache__/
+*.pyc
 
 # Swift build products
 app/.build/

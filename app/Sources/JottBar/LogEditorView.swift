@@ -113,7 +113,7 @@ struct LogEditorView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(formatDuration(preview.total))
                     .font(.title3).monospacedDigit()
-                Text("billable today").font(.caption).foregroundStyle(.secondary)
+                Text("logged today").font(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 16)

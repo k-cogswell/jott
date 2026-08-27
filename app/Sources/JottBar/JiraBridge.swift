@@ -23,6 +23,31 @@ private struct JiraIssuesResponse: Decodable {
     var issues: [JiraIssue]
     var stale: Bool?
     var error: String?
+    /// True when the fetch limit cut off results Jira still had more of.
+    var truncated: Bool?
+    var limit: Int?
+}
+
+struct JiraJQL: Decodable {
+    var ok: Bool
+    var jql: String?
+    var isDefault: Bool?
+    var matched: Int?
+    var matchedExact: Bool?
+    var error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, jql, matched, error
+        case isDefault = "is_default"
+        case matchedExact = "matched_exact"
+    }
+
+    /// "21" / "100+" -- the search endpoint returns no total, so a full page
+    /// of results means "at least this many".
+    var matchedDescription: String? {
+        guard let matched else { return nil }
+        return matchedExact == false ? "\(matched)+" : "\(matched)"
+    }
 }
 
 struct JiraStatus: Decodable {
@@ -52,8 +77,19 @@ enum JiraBridge {
         var issues: [JiraIssue] = []
         var error: String?
         var stale = false
+        /// The query matched more issues than the limit allowed. Surfaced
+        /// rather than dropped: an issue missing from autocomplete because
+        /// it sorted past the limit looks exactly like a broken query.
+        var truncated = false
+        var limit: Int?
         /// Jira is optional: absent configuration is not an error state.
         var isConfigured: Bool { !issues.isEmpty || error != nil }
+
+        var truncationWarning: String? {
+            guard truncated else { return nil }
+            return "Showing the first \(issues.count) issues — your query matches more. "
+                 + "Narrow the JQL, or raise jira_issue_limit in config.toml."
+        }
     }
 
     /// Reads connection state. Never returns or logs the token itself.
@@ -86,6 +122,32 @@ enum JiraBridge {
         JottCLI.run(["jira", "logout"])
     }
 
+    /// Reads the active JQL. Needs no credentials, so it works even before
+    /// a token is stored.
+    static func jql() -> JiraJQL {
+        decodeJQL(JottCLI.run(["jira", "jql", "--json"]).output)
+    }
+
+    /// Validates a query against Jira and persists it on success. The CLI
+    /// drops the issue cache as part of saving, so the next read refetches
+    /// rather than serving the old query's results.
+    static func setJQL(_ query: String) -> JiraJQL {
+        decodeJQL(JottCLI.run(["jira", "jql", query, "--json"]).output)
+    }
+
+    static func resetJQL() -> JiraJQL {
+        decodeJQL(JottCLI.run(["jira", "jql", "--reset", "--json"]).output)
+    }
+
+    private static func decodeJQL(_ output: String) -> JiraJQL {
+        guard let data = output.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(JiraJQL.self, from: data) else {
+            return JiraJQL(ok: false,
+                           error: output.isEmpty ? "No response from the jott CLI." : output)
+        }
+        return decoded
+    }
+
     static func issues(refresh: Bool = false) -> Snapshot {
         var args = ["jira", "issues", "--json"]
         if refresh { args.append("--refresh") }
@@ -99,7 +161,9 @@ enum JiraBridge {
             let decoded = try JSONDecoder().decode(JiraIssuesResponse.self, from: data)
             return Snapshot(issues: decoded.issues,
                             error: decoded.error,
-                            stale: decoded.stale ?? false)
+                            stale: decoded.stale ?? false,
+                            truncated: decoded.truncated ?? false,
+                            limit: decoded.limit)
         } catch {
             // A non-JSON body means the CLI failed before it could emit one.
             let text = result.output.isEmpty ? "No response from the jott CLI." : result.output

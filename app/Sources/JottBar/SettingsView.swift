@@ -36,6 +36,9 @@ final class SettingsWindow {
 struct SettingsView: View {
     @State private var launchAtLogin = Preferences.launchAtLogin
     @State private var cliPath = Preferences.cliPath
+    @State private var promptTextScale = Preferences.promptTextScale
+    @State private var rememberPromptPosition = Preferences.rememberPromptPosition
+    @State private var hasPromptPosition = Preferences.hasStoredPromptPosition
 
     /// Mirrored into state so the UI updates when a binding changes;
     /// Preferences itself is not observable.
@@ -48,6 +51,16 @@ struct SettingsView: View {
     @State private var jiraToken = ""
     @State private var jiraMessage: String?
     @State private var jiraWorking = false
+
+    /// Edited copy of the JQL. Kept separate from the saved value so the
+    /// Save button can tell whether anything actually changed, and a failed
+    /// validation leaves what you typed on screen to fix.
+    @State private var jqlDraft = ""
+    @State private var jqlSaved = ""
+    @State private var jqlIsDefault = true
+    @State private var jqlWorking = false
+    @State private var jqlMessage: String?
+    @State private var jqlFailed = false
 
     private var globalActions: [HotKeyAction] { HotKeyAction.allCases.filter(\.isGlobal) }
     private var localActions: [HotKeyAction] { HotKeyAction.allCases.filter { !$0.isGlobal } }
@@ -101,6 +114,8 @@ struct SettingsView: View {
                 }
             }
 
+            appearanceSection
+
             Section("General") {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, newValue in Preferences.launchAtLogin = newValue }
@@ -113,7 +128,121 @@ struct SettingsView: View {
         .onAppear {
             reloadBindings()
             reloadJira()
+            reloadJQL()
+            hasPromptPosition = Preferences.hasStoredPromptPosition
         }
+    }
+
+    // ------------------------------------------------------------------
+
+    /// One scale drives the whole capture prompt. The sample below is built
+    /// from the same PromptMetrics the prompt uses, so what you see here is
+    /// the size you will actually get.
+    private var appearanceSection: some View {
+        Section {
+            let metrics = PromptMetrics(scale: CGFloat(promptTextScale))
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Prompt text size")
+                    Spacer()
+                    Text("\(Int((promptTextScale * 100).rounded()))%")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 10) {
+                    Image(systemName: "textformat.size.smaller")
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: $promptTextScale,
+                        in: Preferences.promptTextScaleRange,
+                        step: 0.05
+                    )
+                    .onChange(of: promptTextScale) { _, newValue in
+                        Preferences.promptTextScale = newValue
+                    }
+                    Image(systemName: "textformat.size.larger")
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack {
+                    Button("Reset to 100%") {
+                        Preferences.resetPromptTextScale()
+                        promptTextScale = Preferences.promptTextScale
+                    }
+                    .disabled(promptTextScale == 1.0)
+                    Spacer()
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Remember where I move the prompt", isOn: $rememberPromptPosition)
+                    .onChange(of: rememberPromptPosition) { _, newValue in
+                        Preferences.rememberPromptPosition = newValue
+                    }
+
+                HStack {
+                    Text(positionSummary)
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reset Position") {
+                        Preferences.resetPromptPosition()
+                        hasPromptPosition = false
+                    }
+                    .disabled(!hasPromptPosition)
+                }
+            }
+
+            // Live preview of a suggestion row -- the part that is hardest
+            // to read at the default size.
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Preview")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: metrics.rowSpacing) {
+                    Image(systemName: "ticket")
+                        .font(.system(size: metrics.rowIconSize))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: metrics.iconColumnWidth)
+                    Text("PROJ-1234")
+                        .font(.system(size: metrics.keyFontSize, design: .monospaced))
+                        .bold()
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.accentColor.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    Text("An example issue summary")
+                        .font(.system(size: metrics.rowFontSize))
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, metrics.rowVerticalPadding)
+                .background(Color.accentColor.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+        } header: {
+            Text("Appearance")
+        } footer: {
+            Text("Scales the capture prompt — the typing field, your recent tasks and the Jira issue list — along with the panel itself, so longer summaries still fit. Takes effect the next time you open the prompt.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Drag the prompt by its background to move it; this just reports what
+    /// was remembered, in top-left screen coordinates.
+    private var positionSummary: String {
+        guard rememberPromptPosition else {
+            return "The prompt opens near the top of the screen you are using."
+        }
+        guard let point = Preferences.promptPosition else {
+            return "Drag the prompt anywhere — it will open there next time."
+        }
+        return "Opening at \(Int(point.x)), \(Int(point.y)). Drag the prompt to change it."
     }
 
     // ------------------------------------------------------------------
@@ -131,6 +260,12 @@ struct SettingsView: View {
                     Label("Connected as \(jiraStatus.displayName ?? "your account") — \(store.jira.issues.count) issues assigned",
                           systemImage: "checkmark.circle.fill")
                         .font(.caption).foregroundStyle(.green)
+
+                    if let warning = store.jira.truncationWarning {
+                        Label(warning, systemImage: "line.3.horizontal.decrease.circle")
+                            .font(.caption).foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 } else if jiraStatus.tokenStored == true {
                     Label(jiraStatus.error ?? "Stored token is not working.",
                           systemImage: "exclamationmark.triangle.fill")
@@ -168,6 +303,10 @@ struct SettingsView: View {
                 if let jiraMessage {
                     Text(jiraMessage).font(.caption).foregroundStyle(.secondary)
                 }
+
+                Divider()
+
+                jqlEditor
             } else {
                 Text("Jira is not configured.")
                     .font(.callout)
@@ -182,6 +321,120 @@ struct SettingsView: View {
         } footer: {
             Text("Assigned issues appear in the capture prompt. Your token is stored in the macOS Keychain, never in config.toml.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Which issues the prompt offers. Validated against Jira before it is
+    /// saved -- a syntax error comes back as Jira's own parser message, and
+    /// a query that matches nothing is reported rather than silently kept.
+    private var jqlEditor: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Issue query (JQL)")
+                Spacer()
+                if jqlIsDefault {
+                    Text("default").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
+            TextField("JQL", text: $jqlDraft, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.callout, design: .monospaced))
+                .lineLimit(2...5)
+                .disabled(jqlWorking)
+
+            HStack {
+                Button(jqlWorking ? "Checking…" : "Save Query") { saveJQL() }
+                    .disabled(jqlWorking
+                              || jqlDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || jqlDraft == jqlSaved)
+
+                Button("Revert") { jqlDraft = jqlSaved; jqlMessage = nil; jqlFailed = false }
+                    .disabled(jqlWorking || jqlDraft == jqlSaved)
+
+                Button("Use Default") { resetJQL() }
+                    .disabled(jqlWorking || jqlIsDefault)
+
+                Spacer()
+            }
+
+            if let jqlMessage {
+                Text(jqlMessage)
+                    .font(.caption)
+                    .foregroundStyle(jqlFailed ? .orange : .secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Saved queries take effect immediately — the issue cache is cleared on save.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func saveJQL() {
+        jqlWorking = true
+        jqlMessage = nil
+        jqlFailed = false
+        let query = jqlDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task.detached {
+            let result = JiraBridge.setJQL(query)
+            await MainActor.run {
+                jqlWorking = false
+                if result.ok {
+                    jqlSaved = result.jql ?? query
+                    jqlDraft = jqlSaved
+                    jqlIsDefault = result.isDefault ?? false
+                    jqlFailed = false
+                    if result.matched == 0 {
+                        // Jira accepts an unknown field name and returns
+                        // nothing, so zero matches is worth flagging.
+                        jqlFailed = true
+                        jqlMessage = "Saved, but nothing matched. Check field names and values — Jira accepts an unknown field without complaint."
+                    } else {
+                        jqlMessage = "Saved. \(result.matchedDescription ?? "?") issue(s) match."
+                    }
+                    store.refreshJira(force: true)
+                    reloadJira()
+                } else {
+                    jqlFailed = true
+                    jqlMessage = result.error ?? "Could not save the query."
+                }
+            }
+        }
+    }
+
+    private func resetJQL() {
+        jqlWorking = true
+        jqlMessage = nil
+        jqlFailed = false
+        Task.detached {
+            let result = JiraBridge.resetJQL()
+            await MainActor.run {
+                jqlWorking = false
+                if result.ok {
+                    jqlSaved = result.jql ?? ""
+                    jqlDraft = jqlSaved
+                    jqlIsDefault = true
+                    jqlMessage = "Restored the default query."
+                    store.refreshJira(force: true)
+                    reloadJira()
+                } else {
+                    jqlFailed = true
+                    jqlMessage = result.error ?? "Could not restore the default."
+                }
+            }
+        }
+    }
+
+    private func reloadJQL() {
+        Task.detached {
+            let result = JiraBridge.jql()
+            await MainActor.run {
+                guard result.ok, let jql = result.jql else { return }
+                jqlSaved = jql
+                jqlIsDefault = result.isDefault ?? false
+                // Never clobber an unsaved edit.
+                if jqlDraft.isEmpty || jqlDraft == jqlSaved { jqlDraft = jql }
+            }
         }
     }
 

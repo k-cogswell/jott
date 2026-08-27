@@ -93,8 +93,16 @@ def main():
             commands.jira_status(as_json="--json" in flags)
         elif sub == "issues":
             commands.jira_issues(as_json="--json" in flags, force_refresh="--refresh" in flags)
+        elif sub == "jql":
+            # Everything that is not a flag is the query itself, so it works
+            # quoted or bare: jott jira jql assignee = currentUser()
+            words = [a for a in flags if not a.startswith("--")]
+            query = " ".join(words) if words else None
+            commands.jira_jql(query=query,
+                              as_json="--json" in flags,
+                              reset="--reset" in flags)
         else:
-            print(f"Error: unknown jira subcommand '{sub}'. Try: login, logout, status, issues.")
+            print(f"Error: unknown jira subcommand '{sub}'. Try: login, logout, status, issues, jql.")
             sys.exit(1)
 
     elif cmd == "sync":

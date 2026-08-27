@@ -8,6 +8,19 @@ CONFIG_DIR = os.path.expanduser("~/.config/jott")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.toml")
 DEFAULT_LOG_DIR = os.path.expanduser("~/.jott")
 
+def _unquote(value):
+    """
+    Strips one MATCHED pair of surrounding quotes.
+
+    The old .strip('"').strip("'") removed every quote at either end, which
+    mangled any value containing its own quotes -- and JQL is full of them
+    ("project = \"Sky Alyne\""). Only a balanced outer pair is removed now.
+    """
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+        return value[1:-1]
+    return value
+
+
 def load_settings():
     """
     Parses every key/value pair out of config.toml into a plain dict.
@@ -24,7 +37,7 @@ def load_settings():
                     continue
                 if "=" in clean_line:
                     key, val = clean_line.split("=", 1)
-                    settings[key.strip()] = val.strip().strip('"').strip("'")
+                    settings[key.strip()] = _unquote(val.strip())
     except Exception:
         pass
     return settings
@@ -57,6 +70,9 @@ def load_configuration():
                 f.write('# jira_site = "https://yourcompany.atlassian.net"\n')
                 f.write('# jira_email = "you@company.com"\n')
                 f.write('# jira_cloud_id = ""   # only for scoped API tokens\n')
+                f.write("# Which issues appear in the prompt. Omit for assigned-and-open.\n")
+                f.write("# Set it with 'jott jira jql \"<query>\"' so it is checked first.\n")
+                f.write('# jira_jql = "assignee = currentUser() AND statusCategory != Done"\n')
             return DEFAULT_LOG_DIR
         except Exception:
             return DEFAULT_LOG_DIR
@@ -93,3 +109,89 @@ CLR_CMD   = "\033[1;32m"  # Bold Green (Highlights and Durations)
 CLR_TEXT  = "\033[0;90m"  # Dim Gray (Borders and Structural Formatting)
 CLR_RESET = "\033[0m"     # System Color Override Reset
 CLR_BOLD  = "\033[1m"      # Pure Bold White (Active Tasks)
+
+
+# ======================================================================
+# WRITING SETTINGS
+# ======================================================================
+# The app and 'jott jira jql' both need to edit config.toml in place. The
+# file is hand-maintained and full of comments, so rewrite only the one
+# line that changes and leave everything else alone.
+
+def _quote(value):
+    """
+    Wraps a value in whichever quote style it does not itself contain.
+
+    Paired with _unquote this round-trips any value using one quote style.
+    A value containing BOTH cannot be represented by this parser, so say so
+    rather than writing a line that would read back wrong.
+    """
+    if "\n" in value or "\r" in value:
+        raise ValueError("A config value cannot contain a line break.")
+    if '"' not in value:
+        return f'"{value}"'
+    if "'" not in value:
+        return f"'{value}'"
+    raise ValueError(
+        "A config value cannot contain both single and double quotes. "
+        "Rewrite it using only one style."
+    )
+
+
+def set_setting(key, value):
+    """Sets one key, replacing its existing active line or appending one."""
+    quoted = _quote(value)
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+
+    replaced = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        if stripped.split("=", 1)[0].strip() == key:
+            lines[i] = f"{key} = {quoted}\n"
+            replaced = True
+            break
+
+    if not replaced:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
+        lines.append(f"{key} = {quoted}\n")
+
+    _write_lines(lines)
+
+
+def unset_setting(key):
+    """Removes a key's active line, restoring whatever default applies."""
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return
+
+    kept = []
+    for line in lines:
+        stripped = line.strip()
+        if (not stripped.startswith("#") and "=" in stripped
+                and stripped.split("=", 1)[0].strip() == key):
+            continue
+        kept.append(line)
+    _write_lines(kept)
+
+
+def _write_lines(lines):
+    """
+    Writes to a temporary file in the same directory, then renames. A
+    half-written config.toml would take the log directory down with it,
+    not just the Jira settings.
+    """
+    temp_path = CONFIG_FILE + ".tmp"
+    with open(temp_path, "w") as f:
+        f.writelines(lines)
+    os.replace(temp_path, CONFIG_FILE)
