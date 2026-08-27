@@ -343,6 +343,80 @@ def _jira_emit_json(payload):
     print(json.dumps(payload))
 
 
+def _jira_ask(label, current, hint=None):
+    """One setup prompt. Return keeps the current value; '-' clears it."""
+    suffix = f" [{current}]" if current else (f" ({hint})" if hint else "")
+    try:
+        answer = input(f"  {label}{suffix}: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled. Nothing was changed.")
+        sys.exit(1)
+    if answer == "-":
+        return ""
+    return answer if answer else current
+
+
+def jira_setup(site=None, email=None, cloud_id=None, as_json=False):
+    """
+    Shows or sets the connection settings -- site, account email, and the
+    cloud id that scoped tokens need.
+
+    These used to be hand-edited into config.toml, which made connecting a
+    two-tool job: a text editor for the account, then the CLI for the token.
+    JottBar's Settings pane drives this with --json so the whole setup can
+    happen in one place; the file stays perfectly editable by hand.
+    """
+    current = jira.get_connection()
+    supplied = any(value is not None for value in (site, email, cloud_id))
+
+    if not supplied:
+        if as_json:
+            _jira_emit_json({"ok": True, **current})
+            return
+        if not sys.stdin.isatty():
+            _jira_print_connection(current)
+            return
+        print(f"{CLR_TITLE}Jira connection{CLR_RESET}")
+        print(f"{CLR_TEXT}Press Return to keep a value, '-' to clear it.{CLR_RESET}")
+        site = _jira_ask("Site URL", current["site"],
+                         hint="https://yourcompany.atlassian.net")
+        email = _jira_ask("Account email", current["email"],
+                          hint="you@company.com")
+        cloud_id = _jira_ask("Cloud id", current["cloud_id"],
+                             hint="blank unless your token is scoped")
+
+    try:
+        saved = jira.save_connection(site=site, email=email, cloud_id=cloud_id)
+    except jira.JiraError as e:
+        if as_json:
+            _jira_emit_json({"ok": False, "error": str(e), **current})
+            return
+        print(f"{CLR_TEXT}{e}{CLR_RESET}")
+        sys.exit(1)
+
+    if as_json:
+        _jira_emit_json({"ok": True, **saved})
+        return
+
+    print(f"{CLR_CMD}✅ Saved to {CONFIG_FILE}.{CLR_RESET}")
+    _jira_print_connection(saved)
+    # The token is keyed by email in the Keychain, so a changed account
+    # needs a fresh login even though the old token is still stored.
+    if saved["configured"]:
+        try:
+            token = jira.get_token(saved["email"])
+        except jira.JiraError:
+            token = None
+        if not token:
+            print(f"{CLR_TEXT}Next: run 'jott jira login' to store the API token.{CLR_RESET}")
+
+
+def _jira_print_connection(connection):
+    print(f"  Site:      {CLR_BOLD}{connection['site'] or '— not set —'}{CLR_RESET}")
+    print(f"  Email:     {CLR_BOLD}{connection['email'] or '— not set —'}{CLR_RESET}")
+    print(f"  Cloud id:  {CLR_TEXT}{connection['cloud_id'] or 'none (classic token)'}{CLR_RESET}")
+
+
 def jira_login(from_stdin=False):
     """
     Verifies an API token and stores it in the Keychain.
@@ -650,6 +724,7 @@ ACTIVE LOG OUTPUT TARGET:
   {CLR_CMD}sync{CLR_RESET}                        Backs up archive directory structure via rclone.
 
 {CLR_HEAD}JIRA:{CLR_RESET}
+  {CLR_CMD}jira setup{CLR_RESET}                  Sets your Jira site, account email and cloud id.
   {CLR_CMD}jira login{CLR_RESET}                  Stores your Jira API token in the macOS Keychain.
   {CLR_CMD}jira status{CLR_RESET}                 Shows connection settings and verifies the token.
   {CLR_CMD}jira issues{CLR_RESET}                 Lists the issues currently assigned to you.

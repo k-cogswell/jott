@@ -16,6 +16,24 @@ sys.path.append(CURRENT_DIR)
 from src import commands
 from src.helpers import resolve_date
 
+
+def flag_value(flags, name):
+    """
+    Reads '--name=value' or '--name value' out of a flag list.
+
+    Returns None when the flag is absent, which stays distinct from an
+    explicitly empty value -- 'jott jira setup --cloud-id ""' clears the
+    setting, while omitting it leaves the setting alone.
+    """
+    prefix = f"--{name}="
+    for i, arg in enumerate(flags):
+        if arg.startswith(prefix):
+            return arg[len(prefix):]
+        if arg == f"--{name}":
+            following = flags[i + 1] if i + 1 < len(flags) else None
+            return "" if following is None or following.startswith("--") else following
+    return None
+
 def main():
     # Fallback to default behavior if no commands or strings are supplied
     if len(sys.argv) < 2:
@@ -85,7 +103,15 @@ def main():
         # top-level catch-all still treats bare text as a task to log.
         sub = sys.argv[2] if len(sys.argv) > 2 else "status"
         flags = sys.argv[3:]
-        if sub == "login":
+        if sub == "setup":
+            # Site, account and cloud id. Interactive with no flags, and
+            # scriptable with them -- which is how JottBar's Settings pane
+            # writes config.toml without touching the file itself.
+            commands.jira_setup(site=flag_value(flags, "site"),
+                                email=flag_value(flags, "email"),
+                                cloud_id=flag_value(flags, "cloud-id"),
+                                as_json="--json" in flags)
+        elif sub == "login":
             commands.jira_login(from_stdin="--stdin" in flags)
         elif sub == "logout":
             commands.jira_logout()
@@ -102,7 +128,7 @@ def main():
                               as_json="--json" in flags,
                               reset="--reset" in flags)
         else:
-            print(f"Error: unknown jira subcommand '{sub}'. Try: login, logout, status, issues, jql.")
+            print(f"Error: unknown jira subcommand '{sub}'. Try: setup, login, logout, status, issues, jql.")
             sys.exit(1)
 
     elif cmd == "sync":

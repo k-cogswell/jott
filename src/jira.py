@@ -57,9 +57,8 @@ def get_config():
     if not site or not email:
         raise JiraError(
             "Jira is not configured yet.\n"
-            f"  Add these to {CONFIG_FILE}:\n"
-            '      jira_site = "https://yourcompany.atlassian.net"\n'
-            '      jira_email = "you@company.com"\n'
+            "  Run: jott jira setup\n"
+            f"  (or add jira_site and jira_email to {CONFIG_FILE} by hand)\n"
             "  Then run: jott jira login"
         )
     return {
@@ -68,6 +67,114 @@ def get_config():
         "cloud_id": get_setting("jira_cloud_id"),
         "jql": get_jql(),
     }
+
+
+# ----------------------------------------------------------------------
+# CONNECTION SETTINGS
+# ----------------------------------------------------------------------
+# get_config() deliberately refuses to hand back a half-configured account,
+# which is right for anything that then talks to Jira. Setting the account
+# up needs the opposite: whatever is there so far, so a form -- in the
+# terminal or in JottBar's Settings pane -- can show it and complete it.
+# These are the only writers of the jira_site/jira_email/jira_cloud_id keys,
+# so config.toml keeps exactly one writer and its comments survive editing.
+
+def get_connection():
+    """The raw connection settings, complete or not."""
+    site = (get_setting("jira_site") or "").rstrip("/")
+    email = get_setting("jira_email") or ""
+    return {
+        "site": site,
+        "email": email,
+        "cloud_id": get_setting("jira_cloud_id") or "",
+        "configured": bool(site and email),
+    }
+
+
+def normalize_site(raw):
+    """
+    Accepts what a person would actually paste and returns an origin.
+
+    Everything after the host is dropped, because every REST path is
+    appended to this value -- so a URL copied out of the browser address
+    bar (.../jira/software/projects/ABC/boards/1) still resolves.
+    """
+    site = (raw or "").strip().rstrip("/")
+    if not site:
+        raise JiraError("The Jira site URL is required, "
+                        "e.g. https://yourcompany.atlassian.net")
+    if "://" not in site:
+        site = "https://" + site
+    parsed = urllib.parse.urlparse(site)
+    if parsed.scheme not in ("http", "https"):
+        raise JiraError(f"'{raw}' is not an http(s) URL.")
+    if not parsed.netloc or "." not in parsed.netloc:
+        raise JiraError(f"'{raw}' does not look like a Jira site URL, "
+                        "e.g. https://yourcompany.atlassian.net")
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def normalize_email(raw):
+    """
+    The Atlassian account email. It is half of the Basic auth credential and
+    the Keychain account name, so a typo here fails later as a 401 with
+    nothing pointing back at the cause.
+    """
+    email = (raw or "").strip()
+    if not email:
+        raise JiraError("The Atlassian account email is required.")
+    if any(c.isspace() for c in email):
+        raise JiraError("The account email cannot contain spaces.")
+    user, _, domain = email.partition("@")
+    if not user or "." not in domain:
+        raise JiraError(f"'{email}' does not look like an email address.")
+    return email
+
+
+def normalize_cloud_id(raw):
+    """Empty means 'classic token': the key is removed rather than blanked."""
+    cloud_id = (raw or "").strip()
+    if any(c.isspace() for c in cloud_id):
+        raise JiraError("The cloud id cannot contain spaces.")
+    return cloud_id
+
+
+def save_connection(site=None, email=None, cloud_id=None):
+    """
+    Writes the settings that were supplied and leaves the rest alone.
+    Returns the resulting connection.
+
+    Any change drops the issue cache: it holds results fetched for the old
+    site, account or token routing, which would otherwise keep being served
+    for the rest of the TTL and look like the new settings did nothing.
+    """
+    before = get_connection()
+    updates = {}
+
+    if site is not None:
+        updates["jira_site"] = normalize_site(site)
+    if email is not None:
+        updates["jira_email"] = normalize_email(email)
+    if cloud_id is not None:
+        updates["jira_cloud_id"] = normalize_cloud_id(cloud_id)
+
+    changed = False
+    for key, value in updates.items():
+        current = before[key[len("jira_"):]]
+        if value == current:
+            continue
+        try:
+            if value:
+                set_setting(key, value)
+            else:
+                unset_setting(key)
+        except ValueError as e:
+            raise JiraError(str(e))
+        changed = True
+
+    if changed:
+        clear_cache()
+    return get_connection()
 
 
 def get_jql():

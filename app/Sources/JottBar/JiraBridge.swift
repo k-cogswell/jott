@@ -50,6 +50,26 @@ struct JiraJQL: Decodable {
     }
 }
 
+/// The connection settings themselves, complete or not: site, account
+/// email, and the cloud id that scoped tokens are routed through. Read and
+/// written through `jott jira setup`, so config.toml keeps exactly one
+/// writer -- the CLI -- and its comments survive being edited from the app.
+struct JiraConnection: Decodable {
+    var ok: Bool
+    var configured: Bool?
+    var site: String?
+    var email: String?
+    var cloudId: String?
+    var error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, configured, site, email, error
+        case cloudId = "cloud_id"
+    }
+
+    static let empty = JiraConnection(ok: false, configured: false)
+}
+
 struct JiraStatus: Decodable {
     var ok: Bool
     var configured: Bool?
@@ -90,6 +110,31 @@ enum JiraBridge {
             return "Showing the first \(issues.count) issues — your query matches more. "
                  + "Narrow the JQL, or raise jira_issue_limit in config.toml."
         }
+    }
+
+    /// Reads the configured site/account without touching the network.
+    static func connection() -> JiraConnection {
+        decodeConnection(JottCLI.run(["jira", "setup", "--json"]).output)
+    }
+
+    /// Writes the connection settings. The CLI normalises them (a site URL
+    /// pasted from the browser becomes an origin), rejects what cannot work,
+    /// and drops the issue cache when anything changed -- so what comes back
+    /// is what is now on disk, not what was typed.
+    static func saveConnection(site: String, email: String, cloudId: String) -> JiraConnection {
+        decodeConnection(JottCLI.run(["jira", "setup", "--json",
+                                      "--site", site,
+                                      "--email", email,
+                                      "--cloud-id", cloudId]).output)
+    }
+
+    private static func decodeConnection(_ output: String) -> JiraConnection {
+        guard let data = output.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(JiraConnection.self, from: data) else {
+            return JiraConnection(ok: false, configured: false,
+                                  error: output.isEmpty ? "No response from the jott CLI." : output)
+        }
+        return decoded
     }
 
     /// Reads connection state. Never returns or logs the token itself.

@@ -52,6 +52,19 @@ struct SettingsView: View {
     @State private var jiraMessage: String?
     @State private var jiraWorking = false
 
+    /// The account settings, editable here rather than in config.toml.
+    /// Drafts are kept apart from the saved values for the same reason the
+    /// JQL is: the Save button needs to know whether anything changed, and
+    /// a rejected value has to stay on screen to be corrected.
+    @State private var connection = JiraConnection.empty
+    @State private var siteDraft = ""
+    @State private var emailDraft = ""
+    @State private var cloudIDDraft = ""
+    @State private var showCloudID = false
+    @State private var connectionWorking = false
+    @State private var connectionMessage: String?
+    @State private var connectionFailed = false
+
     /// Edited copy of the JQL. Kept separate from the saved value so the
     /// Save button can tell whether anything actually changed, and a failed
     /// validation leaves what you typed on screen to fix.
@@ -127,6 +140,7 @@ struct SettingsView: View {
         .frame(minWidth: 520, minHeight: 420)
         .onAppear {
             reloadBindings()
+            reloadConnection()
             reloadJira()
             reloadJQL()
             hasPromptPosition = Preferences.hasStoredPromptPosition
@@ -250,71 +264,16 @@ struct SettingsView: View {
     @ViewBuilder
     private var jiraSection: some View {
         Section {
-            if jiraStatus.configured == true {
-                LabeledContent("Site", value: jiraStatus.site ?? "—")
-                LabeledContent("Account", value: jiraStatus.email ?? "—")
-                LabeledContent("Token type",
-                               value: jiraStatus.mode == "scoped" ? "Scoped" : "Classic")
+            connectionEditor
 
-                if jiraStatus.valid == true {
-                    Label("Connected as \(jiraStatus.displayName ?? "your account") — \(store.jira.issues.count) issues assigned",
-                          systemImage: "checkmark.circle.fill")
-                        .font(.caption).foregroundStyle(.green)
-
-                    if let warning = store.jira.truncationWarning {
-                        Label(warning, systemImage: "line.3.horizontal.decrease.circle")
-                            .font(.caption).foregroundStyle(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                } else if jiraStatus.tokenStored == true {
-                    Label(jiraStatus.error ?? "Stored token is not working.",
-                          systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption).foregroundStyle(.orange)
-                } else {
-                    Label("No token stored yet.", systemImage: "key")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-
-                HStack {
-                    SecureField("API token", text: $jiraToken)
-                        .textFieldStyle(.roundedBorder)
-                    Button(jiraWorking ? "Connecting…" : "Connect") { connectJira() }
-                        .disabled(jiraToken.isEmpty || jiraWorking)
-                }
-
-                HStack {
-                    Button("Refresh Issues") {
-                        store.refreshJira(force: true)
-                        jiraMessage = "Refreshing…"
-                    }
-                    Button("Disconnect") {
-                        JiraBridge.disconnect()
-                        jiraToken = ""
-                        jiraMessage = "Token removed."
-                        reloadJira()
-                    }
-                    .disabled(jiraStatus.tokenStored != true)
-                    Spacer()
-                    Button("Open config.toml") {
-                        NSWorkspace.shared.open(URL(fileURLWithPath: JottConfig.configFile))
-                    }
-                }
-
-                if let jiraMessage {
-                    Text(jiraMessage).font(.caption).foregroundStyle(.secondary)
-                }
-
+            if connection.configured == true {
                 Divider()
-
+                tokenEditor
+                Divider()
                 jqlEditor
             } else {
-                Text("Jira is not configured.")
-                    .font(.callout)
-                Text("Add jira_site and jira_email to config.toml, then come back here to paste your API token.")
+                Text("Fill in your site and account, save, then paste an API token to connect.")
                     .font(.caption).foregroundStyle(.secondary)
-                Button("Open config.toml") {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: JottConfig.configFile))
-                }
             }
         } header: {
             Text("Jira")
@@ -322,6 +281,217 @@ struct SettingsView: View {
             Text("Assigned issues appear in the capture prompt. Your token is stored in the macOS Keychain, never in config.toml.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    /// Site, account and cloud id -- everything that used to mean opening
+    /// config.toml in a text editor. Saved through `jott jira setup`, which
+    /// normalises and checks the values, so this pane never writes TOML
+    /// itself and the file's comments and hand edits survive.
+    private var connectionEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // A TextField's string argument is its LABEL, which a Form
+            // renders beside the box -- the placeholder has to come through
+            // `prompt` to end up inside it.
+            LabeledContent("Site") {
+                TextField("", text: $siteDraft,
+                          prompt: Text("https://yourcompany.atlassian.net"))
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .disableAutocorrection(true)
+                    .disabled(connectionWorking)
+            }
+
+            LabeledContent("Account email") {
+                TextField("", text: $emailDraft, prompt: Text("you@company.com"))
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .disableAutocorrection(true)
+                    .disabled(connectionWorking)
+            }
+
+            DisclosureGroup("Scoped API token", isExpanded: $showCloudID) {
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField("", text: $cloudIDDraft,
+                              prompt: Text("11111111-2222-3333-4444-555555555555"))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.callout, design: .monospaced))
+                        .disableAutocorrection(true)
+                        .disabled(connectionWorking)
+
+                    Text("Leave this empty for a classic API token. A scoped token has to be routed through your site's cloud id.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack {
+                        Button("Look Up Cloud ID…") { openTenantInfo() }
+                            .disabled(siteDraft.trimmed.isEmpty)
+                            .help("Opens <site>/_edge/tenant_info, which prints your cloud id.")
+                        Spacer()
+                    }
+                }
+                .padding(.top, 4)
+            }
+            .font(.callout)
+
+            HStack {
+                Button(connectionWorking ? "Saving…" : "Save Connection") { saveConnection() }
+                    .disabled(connectionWorking
+                              || !connectionChanged
+                              || siteDraft.trimmed.isEmpty
+                              || emailDraft.trimmed.isEmpty)
+
+                Button("Revert") {
+                    resetConnectionDrafts()
+                    connectionMessage = nil
+                    connectionFailed = false
+                }
+                .disabled(connectionWorking || !connectionChanged)
+
+                Spacer()
+
+                Button("Open config.toml") {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: JottConfig.configFile))
+                }
+            }
+
+            if let connectionMessage {
+                Text(connectionMessage)
+                    .font(.caption)
+                    .foregroundStyle(connectionFailed ? .orange : .secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// The credential half. Only shown once the account is saved -- before
+    /// that there is nothing for a token to authenticate against.
+    private var tokenEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            tokenStatus
+
+            HStack {
+                SecureField("API token", text: $jiraToken)
+                    .textFieldStyle(.roundedBorder)
+                Button(jiraWorking ? "Connecting…" : "Connect") { connectJira() }
+                    .disabled(jiraToken.isEmpty || jiraWorking)
+            }
+
+            HStack {
+                Button("Create a Token…") {
+                    if let url = URL(string: "https://id.atlassian.com/manage-profile/security/api-tokens") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Button("Refresh Issues") {
+                    store.refreshJira(force: true)
+                    jiraMessage = "Refreshing…"
+                }
+                .disabled(jiraStatus.valid != true)
+                Button("Disconnect") {
+                    JiraBridge.disconnect()
+                    jiraToken = ""
+                    jiraMessage = "Token removed."
+                    reloadJira()
+                }
+                .disabled(jiraStatus.tokenStored != true)
+                Spacer()
+            }
+
+            if let jiraMessage {
+                Text(jiraMessage)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var tokenStatus: some View {
+        if jiraStatus.valid == true {
+            Label("Connected as \(jiraStatus.displayName ?? "your account") — \(store.jira.issues.count) issues assigned",
+                  systemImage: "checkmark.circle.fill")
+                .font(.caption).foregroundStyle(.green)
+
+            if let warning = store.jira.truncationWarning {
+                Label(warning, systemImage: "line.3.horizontal.decrease.circle")
+                    .font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else if jiraStatus.tokenStored == true {
+            Label(jiraStatus.error ?? "Stored token is not working.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .font(.caption).foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Label("No token stored yet — paste one below to connect.", systemImage: "key")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var connectionChanged: Bool {
+        siteDraft.trimmed != (connection.site ?? "")
+            || emailDraft.trimmed != (connection.email ?? "")
+            || cloudIDDraft.trimmed != (connection.cloudId ?? "")
+    }
+
+    private func resetConnectionDrafts() {
+        siteDraft = connection.site ?? ""
+        emailDraft = connection.email ?? ""
+        cloudIDDraft = connection.cloudId ?? ""
+        // Reveal the cloud id when one is set; never fold it away while
+        // someone has it open.
+        showCloudID = showCloudID || !cloudIDDraft.isEmpty
+    }
+
+    private func saveConnection() {
+        connectionWorking = true
+        connectionMessage = nil
+        connectionFailed = false
+        let site = siteDraft.trimmed
+        let email = emailDraft.trimmed
+        let cloudID = cloudIDDraft.trimmed
+        Task.detached {
+            let result = JiraBridge.saveConnection(site: site, email: email, cloudId: cloudID)
+            await MainActor.run {
+                connectionWorking = false
+                if result.ok {
+                    connection = result
+                    // Show what was actually stored: the CLI turns a pasted
+                    // browser URL into the origin it will call.
+                    resetConnectionDrafts()
+                    connectionFailed = false
+                    connectionMessage = "Saved to config.toml."
+                    store.refreshJira(force: true)
+                    reloadJira()
+                    reloadJQL()
+                } else {
+                    connectionFailed = true
+                    connectionMessage = result.error ?? "Could not save these settings."
+                }
+            }
+        }
+    }
+
+    private func reloadConnection() {
+        Task.detached {
+            let result = JiraBridge.connection()
+            await MainActor.run {
+                let hadEdits = connectionChanged
+                connection = result
+                if !hadEdits { resetConnectionDrafts() }
+            }
+        }
+    }
+
+    /// <site>/_edge/tenant_info is where Atlassian exposes a site's cloud
+    /// id; it needs no credentials, so a browser is the shortest path to it.
+    private func openTenantInfo() {
+        var site = siteDraft.trimmed
+        if !site.contains("://") { site = "https://" + site }
+        while site.hasSuffix("/") { site.removeLast() }
+        guard let url = URL(string: site + "/_edge/tenant_info") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     /// Which issues the prompt offers. Validated against Jira before it is
@@ -337,7 +507,10 @@ struct SettingsView: View {
                 }
             }
 
-            TextField("JQL", text: $jqlDraft, axis: .vertical)
+            TextField("", text: $jqlDraft,
+                      prompt: Text("assignee = currentUser() AND …"),
+                      axis: .vertical)
+                .labelsHidden()
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.callout, design: .monospaced))
                 .lineLimit(2...5)
@@ -591,4 +764,10 @@ struct ShortcutRecorder: View {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
     }
+}
+
+// ----------------------------------------------------------------------
+
+private extension String {
+    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }
