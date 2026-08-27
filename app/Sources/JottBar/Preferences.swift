@@ -126,6 +126,29 @@ enum Preferences {
         promptPosition = nil
     }
 
+    // -- Activity monitoring. 0 disables either feature entirely. --
+
+    private static let idleKey = "idleThresholdMinutes"
+    private static let nudgeKey = "nudgeIntervalMinutes"
+
+    /// How long away from the keyboard counts as "away". Default 10 minutes.
+    static var idleThresholdMinutes: Int {
+        get {
+            guard defaults.object(forKey: idleKey) != nil else { return 10 }
+            return defaults.integer(forKey: idleKey)
+        }
+        set { defaults.set(newValue, forKey: idleKey) }
+    }
+
+    /// How long a single task may run before a reminder. Default 90 minutes.
+    static var nudgeIntervalMinutes: Int {
+        get {
+            guard defaults.object(forKey: nudgeKey) != nil else { return 90 }
+            return defaults.integer(forKey: nudgeKey)
+        }
+        set { defaults.set(newValue, forKey: nudgeKey) }
+    }
+
     static var cliPath: String {
         get { JottCLI.resolvePath() ?? "" }
         set { defaults.set(newValue, forKey: JottCLI.cliPathDefaultsKey) }

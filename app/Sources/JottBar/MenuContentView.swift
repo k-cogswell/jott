@@ -116,6 +116,9 @@ struct MenuContentView: View {
             MenuButton(title: "Edit Today's Log…", shortcut: shortcut(.editToday)) {
                 onPerform(.editToday)
             }
+            MenuButton(title: "Search History…", shortcut: shortcut(.searchHistory)) {
+                onPerform(.searchHistory)
+            }
             MenuButton(title: "Reveal in Finder") { revealTodayLog() }
             Divider().padding(.vertical, 4)
             MenuButton(title: "Settings…") {

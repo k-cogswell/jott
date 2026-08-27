@@ -56,6 +56,13 @@ final class PromptController: NSObject, NSWindowDelegate {
         if panel?.isVisible == true { dismiss() } else { present(mode: mode) }
     }
 
+    /// Opens straight into retroactive mode with the minutes pre-filled --
+    /// used when the away prompt hands off "I was doing something else".
+    func presentRetroactive(minutes: Int) {
+        present(mode: .retroactive)
+        state?.minutesAgo = max(1, min(720, minutes))
+    }
+
     func present(mode: PromptMode = .immediate) {
         store.reload()
 

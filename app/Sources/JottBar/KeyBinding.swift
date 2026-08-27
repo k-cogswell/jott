@@ -88,6 +88,7 @@ enum HotKeyAction: String, CaseIterable, Identifiable {
     case stopTracking
     case weeklyTimesheet
     case editToday
+    case searchHistory
     case togglePromptMode
 
     var id: String { rawValue }
@@ -100,6 +101,7 @@ enum HotKeyAction: String, CaseIterable, Identifiable {
         case .stopTracking:     return "Stop Tracking"
         case .weeklyTimesheet:  return "Weekly Timesheet"
         case .editToday:        return "Edit Today's Log"
+        case .searchHistory:    return "Search History"
         case .togglePromptMode: return "Toggle Retroactive Mode"
         }
     }
@@ -112,6 +114,7 @@ enum HotKeyAction: String, CaseIterable, Identifiable {
         case .stopTracking:     return "Logs a stop entry"
         case .weeklyTimesheet:  return "Opens the weekly timesheet window"
         case .editToday:        return "Opens today's log editor"
+        case .searchHistory:    return "Searches every entry you have logged"
         case .togglePromptMode: return "Switches the open prompt between now and earlier"
         }
     }

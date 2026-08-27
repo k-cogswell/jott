@@ -129,6 +129,31 @@ struct SettingsView: View {
 
             appearanceSection
 
+            Section {
+                Stepper(value: Binding(
+                    get: { Preferences.idleThresholdMinutes },
+                    set: { Preferences.idleThresholdMinutes = $0 }
+                ), in: 0...120, step: 5) {
+                    Text(Preferences.idleThresholdMinutes == 0
+                         ? "Away detection: off"
+                         : "Ask after \(Preferences.idleThresholdMinutes) minutes away")
+                }
+
+                Stepper(value: Binding(
+                    get: { Preferences.nudgeIntervalMinutes },
+                    set: { Preferences.nudgeIntervalMinutes = $0 }
+                ), in: 0...480, step: 15) {
+                    Text(Preferences.nudgeIntervalMinutes == 0
+                         ? "Long-task reminder: off"
+                         : "Remind me after \(Preferences.nudgeIntervalMinutes) minutes on one task")
+                }
+            } header: {
+                Text("Activity")
+            } footer: {
+                Text("A task left running when you walk away counts as zero once the day rolls over. Away detection catches that before the time is lost. Set either to 0 to disable.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("General") {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, newValue in Preferences.launchAtLogin = newValue }

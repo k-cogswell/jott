@@ -39,6 +39,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.perform(action) }
         }
         HotKeyManager.shared.syncFromPreferences()
+
+        // Idle/away detection and the "still working?" nudge.
+        AwayPromptController.shared.onLogSomethingElse = { [weak self] minutes in
+            self?.prompt.presentRetroactive(minutes: minutes)
+        }
+        ActivityMonitor.shared.onReturnFromAway = { awayStart, duration in
+            guard let task = LedgerStore.shared.summary.currentTask else { return }
+            AwayPromptController.shared.present(awayStart: awayStart,
+                                                duration: duration,
+                                                task: task)
+        }
+        ActivityMonitor.shared.start()
     }
 
     func showPrompt(mode: PromptMode = .immediate) {
@@ -63,6 +75,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .editToday:
             NSApp.activate(ignoringOtherApps: true)
             LogEditorWindow.shared.show(store: LedgerStore.shared)
+        case .searchHistory:
+            NSApp.activate(ignoringOtherApps: true)
+            SearchWindow.shared.show()
         case .togglePromptMode:
             break // matched locally inside the prompt panel
         }
@@ -70,5 +85,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         HotKeyManager.shared.unregisterAll()
+        ActivityMonitor.shared.stop()
     }
 }
