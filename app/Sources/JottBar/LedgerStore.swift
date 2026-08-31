@@ -89,27 +89,63 @@ final class LedgerStore: ObservableObject {
     func log(_ task: String) {
         let trimmed = task.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        apply { JottCLI.log(trimmed) }
+        apply({ JottCLI.log(trimmed) }, confirm: { after in
+            .started(task: trimmed,
+                     at: after.startClock(of: trimmed) ?? "now",
+                     closing: after.justClosedRow)
+        })
     }
 
-    func stop() { apply { JottCLI.stop() } }
+    func stop() {
+        apply({ JottCLI.stop() }, confirm: { after in
+            .stopped(closing: after.justClosedRow, dayTotal: after.total)
+        })
+    }
 
     /// Logs a task that actually started `minutes` ago.
     func backlog(minutes: Int, task: String) {
         let trimmed = task.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, minutes > 0 else { return }
-        apply { JottCLI.backlog(minutes: minutes, task: trimmed) }
+        apply({ JottCLI.backlog(minutes: minutes, task: trimmed) }, confirm: { after in
+            // The away prompt closes a task as `backlog <n> stop`, so this
+            // path has to be able to report a stop as well as a start.
+            if breakKeywords.contains(trimmed.lowercased()) {
+                return .stopped(closing: after.justClosedRow, dayTotal: after.total)
+            }
+            return .backdated(task: trimmed,
+                              at: after.startClock(of: trimmed) ?? "earlier",
+                              minutesAgo: minutes)
+        })
     }
 
-    func continueLast() { apply { JottCLI.continueLast() } }
+    func continueLast() {
+        apply({ JottCLI.continueLast() }, confirm: { after in
+            guard let task = after.currentTask else {
+                return .failure("Nothing to continue yet today.")
+            }
+            return .started(task: task,
+                            at: after.startClock(of: task) ?? "now",
+                            closing: after.justClosedRow)
+        })
+    }
 
-    private func apply(_ action: @escaping () -> JottCLI.Result) {
+    /// `confirm` builds the HUD text from the ledger as it stands AFTER the
+    /// write, so the confirmation reports what actually landed on disk
+    /// rather than what we asked for.
+    private func apply(_ action: @escaping () -> JottCLI.Result,
+                       confirm: @escaping (DaySummary) -> ToastContent) {
         Task.detached {
             let result = action()
             await MainActor.run {
                 self.lastMessage = result.output
                 self.reload()
-                Notifier.post(result.output)
+                // The CLI refuses some commands ("No tasks logged yet today
+                // to continue") on a zero exit status, so the text has to be
+                // checked as well as the status.
+                let failed = !result.succeeded
+                    || result.output.lowercased().hasPrefix("error")
+                ToastController.shared.show(failed ? .failure(result.output)
+                                                   : confirm(self.summary))
             }
         }
     }

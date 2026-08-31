@@ -419,6 +419,9 @@ struct PromptMetrics {
 
     // Layout
     var width: CGFloat { s(560) }
+    /// The confirmation HUD is narrower than the prompt but scales with it,
+    /// so the two read as the same piece of UI.
+    var toastWidth: CGFloat { s(340) }
     var fieldHeight: CGFloat { s(74) }
     var horizontalPadding: CGFloat { s(18) }
     var rowVerticalPadding: CGFloat { s(7) }

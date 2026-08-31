@@ -2,11 +2,15 @@ import Foundation
 import UserNotifications
 
 // ======================================================================
-// CONFIRMATION TOASTS
+// BACKGROUND NUDGES
 // ======================================================================
-// The only permission this app ever asks for. Requested lazily on the
-// first logged task rather than at launch, so a first run that just
-// shows the menubar stays prompt-free.
+// Reserved for messages that have to reach the user when they are NOT
+// looking at the app -- the long-task nudge. Confirming a write is
+// ToastController's job instead: it is instant and needs no permission.
+//
+// This is the only permission the app ever asks for, and it is requested
+// lazily on the first nudge rather than at launch, so a run that never
+// trips one stays prompt-free.
 enum Notifier {
     private static var requested = false
 

@@ -8,3 +8,6 @@ __pycache__/
 app/.build/
 *.xcuserstate
 app/Resources/icon-preview.png
+
+# Claude Code: personal overrides stay local, .claude/settings.json is shared
+.claude/settings.local.json
