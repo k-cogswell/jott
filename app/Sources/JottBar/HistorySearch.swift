@@ -65,7 +65,7 @@ final class SearchWindow {
         window.title = "Search History"
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 480, height: 360)
-        window.contentView = NSHostingView(rootView: SearchView())
+        window.contentView = NSHostingView(rootView: SearchView().tint(Theme.accent))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

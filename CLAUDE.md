@@ -43,6 +43,13 @@ Both parsers (`storage.parse_log`, `Ledger.parse`) read the `- ` lines and ignor
 - **`stop` / `break` / `end` are break sentinels** — matched case-insensitively, excluded from totals.
   The set is defined in `src/storage.py`, repeated in `src/commands.py`, and mirrored in
   `app/Sources/JottBar/Ledger.swift:14`. Change one, change all three.
+- **Entries have a minimum length** (`min_entry_minutes` in config.toml, default 5). Because a
+  duration is the gap to the next entry, this is enforced as a minimum gap between consecutive
+  timestamps. Breaks are exempt on *both* sides, so the rule only ever constrains a direct switch
+  between two real tasks. Logic lives in `storage.short_gaps` / `commands._enforce_minimum` and is
+  mirrored in `Ledger.swift:shortGaps` + `JottConfig.minEntrySeconds()` — change one, change all.
+  `jott rewrite` warns about pre-existing violations but refuses newly introduced ones, so old
+  ledgers stay editable.
 - **Any write must be followed by `generate_and_save_report(date)`**, or the on-disk table goes stale.
 - Ledgers hold real, unrecoverable time-tracking data. Treat writes to `~/.jott` as destructive.
 

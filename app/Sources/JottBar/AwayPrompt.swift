@@ -60,7 +60,7 @@ final class AwayPromptController: NSObject, NSWindowDelegate {
         panel.backgroundColor = .clear
         panel.becomesKeyOnlyIfNeeded = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentViewController = NSHostingController(rootView: view)
+        panel.contentViewController = NSHostingController(rootView: view.tint(Theme.accent))
         panel.delegate = self
         panel.center()
 
@@ -104,7 +104,7 @@ struct AwayPromptView: View {
             HStack(spacing: 10) {
                 Image(systemName: "moon.zzz.fill")
                     .font(.system(size: 22))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("You were away for \(formatDuration(awayDuration))")
                         .font(.headline)

@@ -16,6 +16,7 @@ struct JottBarApp: App {
         MenuBarExtra {
             MenuContentView(onPerform: { delegate.perform($0) })
                 .environmentObject(store)
+                .tint(Theme.accent)
         } label: {
             // Icon plus live status text.
             HStack(spacing: 4) {
@@ -34,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menubar-only: no Dock icon, no app switcher entry.
         NSApp.setActivationPolicy(.accessory)
+
+        // Before any window exists, so nothing flashes the wrong theme.
+        Theme.applyStoredAppearance()
 
         HotKeyManager.shared.onFire = { [weak self] action in
             Task { @MainActor in self?.perform(action) }
@@ -71,10 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             LedgerStore.shared.stop()
         case .weeklyTimesheet:
             NSApp.activate(ignoringOtherApps: true)
-            WeekWindow.shared.show()
+            MainWindow.shared.show(tab: .week)
         case .editToday:
             NSApp.activate(ignoringOtherApps: true)
-            LogEditorWindow.shared.show(store: LedgerStore.shared)
+            MainWindow.shared.show(tab: .today)
         case .searchHistory:
             NSApp.activate(ignoringOtherApps: true)
             SearchWindow.shared.show()
