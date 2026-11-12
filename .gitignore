@@ -1,4 +1,13 @@
 /archives
 .DS_Store
 /.git
-*/__pycache__
+__pycache__/
+*.pyc
+
+# Swift build products
+app/.build/
+*.xcuserstate
+app/Resources/icon-preview.png
+
+# Claude Code: personal overrides stay local, .claude/settings.json is shared
+.claude/settings.local.json
