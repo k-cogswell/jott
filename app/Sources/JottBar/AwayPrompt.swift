@@ -35,8 +35,14 @@ final class AwayPromptController: NSObject, NSWindowDelegate {
             },
             onKeep: { [weak self] in self?.dismiss() },
             onLogOther: { [weak self] in
-                self?.dismiss()
+                // Present BEFORE dismissing. This panel is the app's only
+                // key window; ordering it out first leaves an accessory app
+                // with nothing key, so macOS hands activation back to the
+                // previous app -- asynchronously, landing just after the
+                // capture prompt became key and making it resign (and
+                // dismiss itself) a moment after appearing.
                 self?.onLogSomethingElse?(minutesAway)
+                self?.dismiss()
             }
         )
 
