@@ -52,6 +52,21 @@ enum Preferences {
 
     // -- Appearance --
 
+    private static let appearanceKey = "appearance.mode"
+
+    /// Light, dark, or whatever the system is doing. Stored in UserDefaults
+    /// rather than config.toml: it is a property of this app's windows, and
+    /// the CLI has no appearance to speak of.
+    static var appearance: AppearanceMode {
+        get {
+            guard let raw = defaults.string(forKey: appearanceKey),
+                  let mode = AppearanceMode(rawValue: raw) else { return .system }
+            return mode
+        }
+        set { defaults.set(newValue.rawValue, forKey: appearanceKey) }
+    }
+
+
     private static let promptTextScaleKey = "prompt.textScale"
 
     /// Bounds chosen so the panel stays usable: below ~0.85 the Jira key
