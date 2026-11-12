@@ -208,7 +208,7 @@ private struct ToastView: View {
                 .font(.system(size: metrics.leadingIconSize * 0.85, weight: .regular))
                 .foregroundStyle(content.isError
                                  ? AnyShapeStyle(Color.red)
-                                 : AnyShapeStyle(Color.accentColor))
+                                 : AnyShapeStyle(Theme.accent))
                 .frame(width: metrics.leadingIconSize)
 
             VStack(alignment: .leading, spacing: 2) {

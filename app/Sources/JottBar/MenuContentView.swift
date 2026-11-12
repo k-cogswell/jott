@@ -74,7 +74,7 @@ struct MenuContentView: View {
                                 Spacer(minLength: 8)
                                 Text(row.duration > 0 ? formatDuration(row.duration) : "–")
                                     .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(row.isActive ? Color.accentColor : .secondary)
+                                    .foregroundStyle(row.isActive ? Theme.accent : .secondary)
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 5)
@@ -97,6 +97,11 @@ struct MenuContentView: View {
 
     private var actions: some View {
         VStack(spacing: 0) {
+            MenuButton(title: "Open Jott…") {
+                NSApp.activate(ignoringOtherApps: true)
+                MainWindow.shared.show(tab: .dashboard)
+            }
+            Divider().padding(.vertical, 4)
             MenuButton(title: "New Entry…", shortcut: shortcut(.newEntry)) {
                 onPerform(.newEntry)
             }
@@ -116,6 +121,10 @@ struct MenuContentView: View {
             MenuButton(title: "Edit Today's Log…", shortcut: shortcut(.editToday)) {
                 onPerform(.editToday)
             }
+            MenuButton(title: "Previous Days…") {
+                NSApp.activate(ignoringOtherApps: true)
+                MainWindow.shared.show(tab: .previousDays)
+            }
             MenuButton(title: "Search History…", shortcut: shortcut(.searchHistory)) {
                 onPerform(.searchHistory)
             }
@@ -123,7 +132,7 @@ struct MenuContentView: View {
             Divider().padding(.vertical, 4)
             MenuButton(title: "Settings…") {
                 NSApp.activate(ignoringOtherApps: true)
-                SettingsWindow.shared.show(store: store)
+                MainWindow.shared.show(tab: .settings)
             }
             MenuButton(title: "Quit JottBar", shortcut: "⌘Q") { NSApp.terminate(nil) }
                 // A real shortcut, unlike the decorative labels this replaces.
@@ -165,7 +174,7 @@ struct MenuButton: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 5)
-        .background(hovering ? Color.accentColor.opacity(0.18) : .clear)
+        .background(hovering ? Theme.accent.opacity(0.18) : .clear)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture(perform: action)

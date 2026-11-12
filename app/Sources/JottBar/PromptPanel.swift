@@ -122,7 +122,7 @@ final class PromptController: NSObject, NSWindowDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         // contentViewController (rather than contentView) makes AppKit resize
         // the window to the SwiftUI content's fitting size as it changes.
-        panel.contentViewController = NSHostingController(rootView: view)
+        panel.contentViewController = NSHostingController(rootView: view.tint(Theme.accent))
         // Settle on the content's real size first. Positioning while the
         // hosting controller still reports its initial (near-zero) fitting
         // size centres the wrong geometry, and the window then grows out
@@ -489,7 +489,7 @@ struct PromptView: View {
             HStack(spacing: metrics.fieldSpacing) {
                 Image(systemName: isRetroactive ? "clock.arrow.circlepath" : "clock")
                     .font(.system(size: metrics.leadingIconSize, weight: .light))
-                    .foregroundStyle(isRetroactive ? Color.accentColor : .secondary)
+                    .foregroundStyle(isRetroactive ? Theme.accent : .secondary)
 
                 PromptTextField(
                     text: $text,
@@ -514,7 +514,7 @@ struct PromptView: View {
                                   ? "ticket" : "arrow.uturn.backward")
                                 .font(.system(size: metrics.rowIconSize))
                                 .foregroundStyle(match.kind == .jira
-                                                 ? AnyShapeStyle(Color.accentColor)
+                                                 ? AnyShapeStyle(Theme.accent)
                                                  : AnyShapeStyle(.tertiary))
                                 .frame(width: metrics.iconColumnWidth)
 
@@ -524,7 +524,7 @@ struct PromptView: View {
                                     .bold()
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 1)
-                                    .background(Color.accentColor.opacity(0.15))
+                                    .background(Theme.accent.opacity(0.15))
                                     .clipShape(RoundedRectangle(cornerRadius: 4))
                                 Text(match.taskText.dropFirst(key.count).trimmingCharacters(in: .whitespaces))
                                     .font(.system(size: metrics.rowFontSize))
@@ -545,7 +545,7 @@ struct PromptView: View {
                         }
                         .padding(.horizontal, metrics.horizontalPadding)
                         .padding(.vertical, metrics.rowVerticalPadding)
-                        .background(index == selection ? Color.accentColor.opacity(0.18) : .clear)
+                        .background(index == selection ? Theme.accent.opacity(0.18) : .clear)
                         .contentShape(Rectangle())
                         .onTapGesture { onSubmit(match.taskText, isRetroactive ? minutesAgo : nil) }
                     }
@@ -576,7 +576,7 @@ struct PromptView: View {
                         Text("\(preset)m")
                             .padding(.horizontal, 9)
                             .padding(.vertical, 3)
-                            .background(minutesAgo == preset ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.07))
+                            .background(minutesAgo == preset ? Theme.accent.opacity(0.25) : Color.primary.opacity(0.07))
                             .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -592,7 +592,7 @@ struct PromptView: View {
 
                 Text("at \(startsAt)")
                     .font(.system(size: metrics.calloutFontSize, design: .monospaced))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Theme.accent)
             }
             .font(.system(size: metrics.calloutFontSize))
             .padding(.horizontal, metrics.horizontalPadding)

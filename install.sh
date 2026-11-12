@@ -62,6 +62,13 @@ if [ ! -f "$REPO_DIR/app/Resources/AppIcon.icns" ]; then
 fi
 cp "$REPO_DIR/app/Resources/AppIcon.icns" "$STAGE/$APP_NAME.app/Contents/Resources/AppIcon.icns"
 
+# In-app brand mark for the sidebar. Optional on purpose: the app draws a
+# plain fallback when it is absent, so a checkout without the asset -- or a
+# plain `swift build`, which produces no bundle at all -- still runs.
+if [ -f "$REPO_DIR/assets/redspace-logo.png" ]; then
+    cp "$REPO_DIR/assets/redspace-logo.png" "$STAGE/$APP_NAME.app/Contents/Resources/redspace-logo.png"
+fi
+
 # Ad-hoc signature. Apple Silicon refuses to execute unsigned arm64 code,
 # so this is required even for a purely local build. It is NOT the same as
 # a Developer ID signature and does not enable distribution.

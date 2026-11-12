@@ -7,36 +7,11 @@ import Carbon.HIToolbox
 // ======================================================================
 // Hosted in a plain NSWindow rather than the SwiftUI Settings scene,
 // because a MenuBarExtra-only app has no menu bar to open it from.
-@MainActor
-final class SettingsWindow {
-    static let shared = SettingsWindow()
-    private var window: NSWindow?
-
-    func show(store: LedgerStore) {
-        if let window {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 560),
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "JottBar Settings"
-        window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 520, height: 420)
-        window.contentView = NSHostingView(rootView: SettingsView().environmentObject(store))
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        self.window = window
-    }
-}
-
 struct SettingsView: View {
     @State private var launchAtLogin = Preferences.launchAtLogin
     @State private var cliPath = Preferences.cliPath
     @State private var promptTextScale = Preferences.promptTextScale
+    @State private var appearance = Preferences.appearance
     @State private var rememberPromptPosition = Preferences.rememberPromptPosition
     @State private var hasPromptPosition = Preferences.hasStoredPromptPosition
 
@@ -181,6 +156,23 @@ struct SettingsView: View {
         Section {
             let metrics = PromptMetrics(scale: CGFloat(promptTextScale))
 
+            VStack(alignment: .leading, spacing: 6) {
+                Picker("Theme", selection: $appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Label(mode.label, systemImage: mode.symbol).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: appearance) { _, newValue in
+                    Theme.setAppearance(newValue)
+                }
+
+                Text("Applies to every JottBar window. \"System\" follows your macOS setting, including when it switches at sunset.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Divider()
+
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Prompt text size")
@@ -245,14 +237,14 @@ struct SettingsView: View {
                 HStack(spacing: metrics.rowSpacing) {
                     Image(systemName: "ticket")
                         .font(.system(size: metrics.rowIconSize))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(Theme.accent)
                         .frame(width: metrics.iconColumnWidth)
                     Text("PROJ-1234")
                         .font(.system(size: metrics.keyFontSize, design: .monospaced))
                         .bold()
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(Color.accentColor.opacity(0.15))
+                        .background(Theme.accent.opacity(0.15))
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                     Text("An example issue summary")
                         .font(.system(size: metrics.rowFontSize))
@@ -261,7 +253,7 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, metrics.rowVerticalPadding)
-                .background(Color.accentColor.opacity(0.18))
+                .background(Theme.accent.opacity(0.18))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             }
         } header: {
@@ -748,7 +740,7 @@ struct ShortcutRecorder: View {
                     .frame(width: 110)
             }
             .buttonStyle(.bordered)
-            .tint(isRecording ? .accentColor : nil)
+            .tint(isRecording ? Theme.accent : nil)
 
             Button {
                 onClear()

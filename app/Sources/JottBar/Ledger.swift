@@ -13,6 +13,30 @@ import Foundation
 /// Task names that mean "not billable" -- kept identical to the Python.
 let breakKeywords: Set<String> = ["stop", "break", "end"]
 
+func isBreakTask(_ message: String) -> Bool {
+    breakKeywords.contains(message.trimmingCharacters(in: .whitespaces).lowercased())
+}
+
+/// Consecutive pairs closer together than the minimum entry length.
+/// Mirrors storage.short_gaps: breaks are exempt on BOTH sides, so the
+/// rule only ever governs a direct switch between two real tasks.
+///
+/// `entries` must be chronological. Returns the index of the EARLIER
+/// entry of each offending pair, with the gap in seconds.
+func shortGaps(_ entries: [(time: String, message: String)],
+               minSeconds: Int = JottConfig.minEntrySeconds()) -> [(index: Int, gap: Int)] {
+    guard minSeconds > 0 else { return [] }
+    var out: [(index: Int, gap: Int)] = []
+    for i in 0..<max(0, entries.count - 1) {
+        let (t1, m1) = entries[i]
+        let (t2, m2) = entries[i + 1]
+        if isBreakTask(m1) || isBreakTask(m2) { continue }
+        guard let s1 = Ledger.seconds(from: t1), let s2 = Ledger.seconds(from: t2) else { continue }
+        if s2 - s1 < minSeconds { out.append((i, s2 - s1)) }
+    }
+    return out
+}
+
 struct LedgerEntry {
     var time: String        // HH:MM:SS
     var message: String
@@ -260,5 +284,215 @@ extension Ledger {
             ))
         }
         return week
+    }
+}
+
+// ======================================================================
+// TICKET PIVOT
+// ======================================================================
+// The weekly timesheet is transcribed into the client's system ticket by
+// ticket, not day by day -- so the same ticket touched on four days is
+// one row with four numbers, and the thing you actually copy is the row
+// total. This turns the day-major `WeekSummary` into that ticket-major
+// grid.
+//
+// Task text carries the classification already, because that is what the
+// prompt writes:
+//
+//     SKYALYNE-322 PR Review      -> ticket SKYALYNE-322, project SKYALYNE
+//     General Internal - Tech Share -> non-billable, group "General Internal"
+//
+// Anything matching neither shape is grouped under "Other" rather than
+// dropped: unclassified time you can still see is a prompt you will fix,
+// time that vanished is one you never notice.
+
+struct TicketIdentity {
+    var group: String
+    var title: String
+    /// The ticket key, or "Internal" for non-billable rows.
+    var subtitle: String
+    var isBillable: Bool
+    /// Stable per-row identity -- the ticket key where there is one, so two
+    /// differently-worded entries for the same ticket collapse together.
+    var key: String
+
+    /// Matches a leading Jira key: uppercase project, hyphen, digits.
+    private static let ticketPattern = try? NSRegularExpression(
+        pattern: "^([A-Z][A-Z0-9]*)-([0-9]+)\\s+(.*)$"
+    )
+
+    static func parse(_ task: String) -> TicketIdentity {
+        let trimmed = task.trimmingCharacters(in: .whitespaces)
+        let range = NSRange(trimmed.startIndex..., in: trimmed)
+
+        if let match = ticketPattern?.firstMatch(in: trimmed, range: range),
+           let project = Range(match.range(at: 1), in: trimmed),
+           let number = Range(match.range(at: 2), in: trimmed),
+           let rest = Range(match.range(at: 3), in: trimmed) {
+            let ticket = "\(trimmed[project])-\(trimmed[number])"
+            let summary = trimmed[rest].trimmingCharacters(in: .whitespaces)
+            return TicketIdentity(
+                group: String(trimmed[project]),
+                title: summary.isEmpty ? ticket : summary,
+                subtitle: ticket,
+                isBillable: true,
+                key: ticket
+            )
+        }
+
+        // "<something> - <something>" is the convention for non-ticket time.
+        if let sep = trimmed.range(of: " - ") {
+            let group = String(trimmed[trimmed.startIndex..<sep.lowerBound])
+            let rest = String(trimmed[sep.upperBound...])
+            return TicketIdentity(
+                group: group,
+                title: rest.isEmpty ? group : rest,
+                subtitle: "Internal",
+                isBillable: false,
+                key: trimmed.lowercased()
+            )
+        }
+
+        return TicketIdentity(
+            group: "Other",
+            title: trimmed,
+            subtitle: "Uncategorised",
+            isBillable: false,
+            key: trimmed.lowercased()
+        )
+    }
+}
+
+struct TicketRow: Identifiable {
+    var id: String
+    var title: String
+    var subtitle: String
+    var isBillable: Bool
+    /// One slot per day in the pivot. `nil` means the task was never logged
+    /// that day; `0` means it was logged but earned no time -- a real and
+    /// different thing, and the grid draws them differently.
+    var days: [TimeInterval?]
+    var total: TimeInterval
+}
+
+struct TicketGroup: Identifiable {
+    var id: String
+    var name: String
+    var isBillable: Bool
+    var rows: [TicketRow]
+    var days: [TimeInterval?]
+    var total: TimeInterval
+}
+
+struct WeekPivot {
+    var groups: [TicketGroup] = []
+    var days: [TimeInterval] = []
+    var grandTotal: TimeInterval = 0
+    /// Biggest single cell, so the heat tint has something to scale against.
+    var maxCell: TimeInterval = 0
+}
+
+extension WeekSummary {
+    /// `dayCount` is 5 for the working week, 7 with the weekend shown.
+    func pivot(dayCount: Int) -> WeekPivot {
+        var pivot = WeekPivot()
+        pivot.days = Array(repeating: 0, count: dayCount)
+
+        // group name -> row key -> row under construction
+        var groups: [String: (billable: Bool, order: Int, rows: [String: TicketRow], order2: [String])] = [:]
+        var groupOrder: [String] = []
+
+        for (index, day) in days.prefix(dayCount).enumerated() {
+            for item in day.taskTotals {
+                let id = TicketIdentity.parse(item.task)
+
+                if groups[id.group] == nil {
+                    groups[id.group] = (id.isBillable, groupOrder.count, [:], [])
+                    groupOrder.append(id.group)
+                }
+                if groups[id.group]!.rows[id.key] == nil {
+                    groups[id.group]!.rows[id.key] = TicketRow(
+                        id: "\(id.group)/\(id.key)",
+                        title: id.title,
+                        subtitle: id.subtitle,
+                        isBillable: id.isBillable,
+                        days: Array(repeating: nil, count: dayCount),
+                        total: 0
+                    )
+                    groups[id.group]!.order2.append(id.key)
+                }
+                groups[id.group]!.rows[id.key]!.days[index] =
+                    (groups[id.group]!.rows[id.key]!.days[index] ?? 0) + item.total
+                groups[id.group]!.rows[id.key]!.total += item.total
+
+                pivot.days[index] += item.total
+                pivot.grandTotal += item.total
+            }
+        }
+
+        for name in groupOrder {
+            guard let bucket = groups[name] else { continue }
+            var rows = bucket.order2.compactMap { bucket.rows[$0] }
+            rows.sort { $0.total > $1.total }
+
+            var dayTotals: [TimeInterval?] = Array(repeating: nil, count: dayCount)
+            for row in rows {
+                for (i, value) in row.days.enumerated() where value != nil {
+                    dayTotals[i] = (dayTotals[i] ?? 0) + (value ?? 0)
+                }
+                pivot.maxCell = max(pivot.maxCell, row.days.compactMap { $0 }.max() ?? 0)
+            }
+
+            pivot.groups.append(TicketGroup(
+                id: name,
+                name: name,
+                isBillable: bucket.billable,
+                rows: rows,
+                days: dayTotals,
+                total: rows.reduce(0) { $0 + $1.total }
+            ))
+        }
+
+        // Billable work first, then the heaviest group -- the order you
+        // actually fill the timesheet in.
+        pivot.groups.sort {
+            $0.isBillable == $1.isBillable ? $0.total > $1.total : $0.isBillable
+        }
+        return pivot
+    }
+}
+
+// ======================================================================
+// DAY INDEX
+// ======================================================================
+// Mirrors storage.iter_log_dates: walk LOG_BASE_DIR/YYYY/MM/*.md rather
+// than keeping an index, because the files on disk ARE the index and
+// anything cached would go stale the moment the CLI wrote a day.
+
+extension Ledger {
+    /// One entry per day that has a ledger, newest first.
+    static func availableDates(limit: Int = 400) -> [Date] {
+        let base = JottConfig.logBaseDir()
+        let fm = FileManager.default
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyy-MM-dd"
+
+        guard let years = try? fm.contentsOfDirectory(atPath: base) else { return [] }
+        var out: [Date] = []
+
+        for year in years {
+            let yearPath = (base as NSString).appendingPathComponent(year)
+            guard let months = try? fm.contentsOfDirectory(atPath: yearPath) else { continue }
+            for month in months {
+                let monthPath = (yearPath as NSString).appendingPathComponent(month)
+                guard let files = try? fm.contentsOfDirectory(atPath: monthPath) else { continue }
+                for file in files where file.hasSuffix(".md") {
+                    if let date = stamp.date(from: String(file.dropLast(3))) {
+                        out.append(date)
+                    }
+                }
+            }
+        }
+        return Array(out.sorted(by: >).prefix(limit))
     }
 }
