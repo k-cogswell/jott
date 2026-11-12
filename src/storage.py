@@ -1,7 +1,7 @@
 import os
 import sys
 from datetime import datetime, timedelta
-from .config import LOG_BASE_DIR
+from .config import LOG_BASE_DIR, get_setting
 from .helpers import format_duration, get_ordinal_date
 
 def get_file_path(date_str=None):
@@ -179,3 +179,72 @@ def iter_log_dates():
             for name in sorted(os.listdir(month_path)):
                 if name.endswith(".md"):
                     yield name[:-3]
+
+
+# ===== MINIMUM ENTRY LENGTH ==========================================
+# An entry has no end time -- its duration is the gap to the next entry.
+# So "entries must be at least N minutes" really means "consecutive
+# timestamps must be at least N minutes apart".
+#
+# Breaks are exempt on BOTH sides. Stopping two minutes after you start
+# has to stay possible, and a break's own length is not tracked time at
+# all (it is excluded from every total), so constraining it would be
+# meaningless. The rule therefore governs exactly one thing: how short a
+# stretch of real work you can record by switching straight from one
+# task to another.
+
+BREAK_KEYWORDS = ["stop", "break", "end"]
+
+DEFAULT_MIN_ENTRY_MINUTES = 5
+# A ceiling so a typo in config.toml cannot lock you out of logging.
+MAX_MIN_ENTRY_MINUTES = 120
+
+
+def is_break_task(message):
+    return message.strip().lower() in BREAK_KEYWORDS
+
+
+def get_min_entry_seconds():
+    """0 disables the rule entirely -- the escape hatch for a day that
+    genuinely needs minute-level entries."""
+    raw = get_setting("min_entry_minutes")
+    if raw is None:
+        return DEFAULT_MIN_ENTRY_MINUTES * 60
+    try:
+        minutes = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return DEFAULT_MIN_ENTRY_MINUTES * 60
+    return max(0, min(minutes, MAX_MIN_ENTRY_MINUTES)) * 60
+
+
+def gap_is_exempt(earlier_message, later_message):
+    return is_break_task(earlier_message) or is_break_task(later_message)
+
+
+def short_gaps(entries, min_seconds=None):
+    """
+    Consecutive pairs that fall under the minimum.
+
+    `entries` is a list of (HH:MM:SS, message) in chronological order.
+    Returns [(earlier_time, later_time, gap_seconds)].
+    """
+    if min_seconds is None:
+        min_seconds = get_min_entry_seconds()
+    if min_seconds <= 0:
+        return []
+
+    out = []
+    for i in range(len(entries) - 1):
+        t1, m1 = entries[i]
+        t2, m2 = entries[i + 1]
+        if gap_is_exempt(m1, m2):
+            continue
+        try:
+            d1 = datetime.strptime(t1, "%H:%M:%S")
+            d2 = datetime.strptime(t2, "%H:%M:%S")
+        except ValueError:
+            continue
+        gap = (d2 - d1).total_seconds()
+        if gap < min_seconds:
+            out.append((t1, t2, int(gap)))
+    return out

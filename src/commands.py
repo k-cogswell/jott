@@ -7,15 +7,90 @@ from datetime import datetime, timedelta
 from .config import LOG_BASE_DIR, CONFIG_FILE, CLR_TITLE, CLR_HEAD, CLR_CMD, CLR_TEXT, CLR_RESET, CLR_BOLD
 from .helpers import format_duration, get_ordinal_date
 from . import jira
-from .storage import get_file_path, parse_log, calculate_daily_durations, generate_and_save_report, is_unclosed, iter_log_dates
+from .storage import (get_file_path, parse_log, calculate_daily_durations, generate_and_save_report,
+                      is_unclosed, iter_log_dates, get_min_entry_seconds, is_break_task,
+                      gap_is_exempt, short_gaps)
+
+def _enforce_minimum(date_str, target_dt, message):
+    """
+    Applies the minimum-entry-length rule to a timestamp about to be
+    written, returning (adjusted_dt, note) or exiting with an error.
+
+    Shifting forward is the preferred fix, but it is only honest while
+    the shifted timestamp stays in the past. A ledger is appended at
+    "now", so a future timestamp would claim you had already started
+    something you have not -- and every later entry would then land
+    BEFORE it and be refused in turn. So the rule is: shift when the
+    first legal moment has already happened (the backdated-insert case),
+    and refuse with a countdown when it has not (the live-switch case).
+
+    Breaks are exempt on both sides, so stopping is never blocked.
+    """
+    min_seconds = get_min_entry_seconds()
+    if min_seconds <= 0 or is_break_task(message):
+        return target_dt, None
+
+    entries = parse_log(get_file_path(date_str))
+    if not entries:
+        return target_dt, None
+
+    def at(e):
+        return datetime.strptime(f"{date_str} {e['time']}", "%Y-%m-%d %H:%M:%S")
+
+    earlier = [e for e in entries if at(e) <= target_dt]
+    later = [e for e in entries if at(e) > target_dt]
+    minutes = int(min_seconds // 60)
+
+    adjusted, note = target_dt, None
+
+    if earlier:
+        previous = max(earlier, key=at)
+        if not is_break_task(previous["message"]):
+            floor = at(previous) + timedelta(seconds=min_seconds)
+            if target_dt < floor:
+                now = datetime.now()
+                if floor > now:
+                    running = int((now - at(previous)).total_seconds())
+                    remaining = int((floor - now).total_seconds() + 59) // 60
+                    print(f"Error: '{previous['message']}' has only been running "
+                          f"{running // 60}m {running % 60}s.")
+                    print(f"Entries must be at least {minutes} minutes. Wait {remaining}m, "
+                          f"stop first, or fix the entry in 'jott edit'.")
+                    sys.exit(1)
+                # Never roll into the next day -- timestamps are per-file
+                # and HH:MM:SS has nowhere to put a 25th hour.
+                if floor.strftime("%Y-%m-%d") != date_str:
+                    print(f"Error: '{message}' would need to start at "
+                          f"{floor.strftime('%H:%M')}, which is tomorrow.")
+                    sys.exit(1)
+                note = (f"shifted to {floor.strftime('%H:%M:%S')} to keep "
+                        f"'{previous['message']}' at the {minutes}-minute minimum")
+                adjusted = floor
+
+    if later:
+        following = min(later, key=at)
+        if not is_break_task(following["message"]):
+            gap = int((at(following) - adjusted).total_seconds())
+            if gap < min_seconds:
+                print(f"Error: that would leave only {gap // 60}m {gap % 60}s before "
+                      f"'{following['message']}' at {following['time']}.")
+                print("Nothing was written. Use 'jott edit' or JottBar's day editor "
+                      "to make room first.")
+                sys.exit(1)
+
+    return adjusted, note
+
 
 def log_task(message, custom_dt=None):
     """Saves a fresh tracking row milestone directly to your historical logs."""
     target_dt = custom_dt if custom_dt else datetime.now()
     date_str = target_dt.strftime("%Y-%m-%d")
+
+    target_dt, shift_note = _enforce_minimum(date_str, target_dt, message)
+
     time_str = target_dt.strftime("%H:%M:%S")
     file_path = get_file_path(date_str)
-    
+
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "a") as f:
         f.write(f"- {time_str} | {message}\n")
@@ -24,6 +99,8 @@ def log_task(message, custom_dt=None):
     generate_and_save_report(date_str)
     backdate_msg = f" (backdated to {date_str})" if custom_dt else ""
     print(f"Recorded: [{time_str}]{backdate_msg} {message}")
+    if shift_note:
+        print(f"Note: {shift_note}.")
 
 def edit_ledger(target_date):
     """
@@ -94,6 +171,29 @@ def rewrite_ledger(target_date):
     entries.sort(key=lambda e: e[0])
     file_path = get_file_path(target_date)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+    # Minimum entry length. A day that ALREADY contains short entries can
+    # still be saved -- refusing would strand historical days nobody can
+    # edit any more -- but it may not gain new ones. So violations are
+    # diffed against what is currently on disk rather than judged absolutely.
+    min_seconds = get_min_entry_seconds()
+    if min_seconds > 0 and entries:
+        before = [(e["time"], e["message"]) for e in parse_log(file_path)]
+        pre_existing = {(a, b) for a, b, _ in short_gaps(before, min_seconds)}
+        violations = short_gaps(entries, min_seconds)
+        introduced = [v for v in violations if (v[0], v[1]) not in pre_existing]
+        minutes = int(min_seconds // 60)
+
+        if introduced:
+            print(f"Error: entries must be at least {minutes} minutes long.")
+            for a, b, gap in introduced:
+                print(f"  {a} -> {b} is only {gap // 60}m {gap % 60}s")
+            print("Nothing was written.")
+            sys.exit(1)
+
+        for a, b, gap in violations:
+            print(f"Warning: {a} -> {b} is only {gap // 60}m {gap % 60}s "
+                  f"(below the {minutes}-minute minimum, kept as-is).")
 
     if not entries:
         # Every row was deleted. Drop the file rather than leave an orphaned
